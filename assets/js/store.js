@@ -12,7 +12,7 @@ const defaultSettings = {
   theme: "light",
   provider: "gemini",        // AI is real; abstracted so more providers can slot in
   geminiKey: "",
-  geminiModel: "gemini-2.5-flash",
+  geminiModel: "gemini-flash-latest",
   exportDefault: "md",
   recordingQuality: "standard",
 };

@@ -63,7 +63,7 @@ export function settingsView() {
       <div id="geminiCfg">
         <div class="field mt"><label>Gemini API key</label><input type="password" id="gkey" placeholder="AIza…" value="${esc(set.geminiKey)}" /></div>
         <div class="field"><label>Model</label><select id="gmodel">
-          ${["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash", "gemini-1.5-flash"].map((m) => `<option ${set.geminiModel === m ? "selected" : ""}>${m}</option>`).join("")}
+          ${["gemini-flash-latest", "gemini-flash-lite-latest", "gemini-2.0-flash", "gemini-pro-latest"].map((m) => `<option ${set.geminiModel === m ? "selected" : ""}>${m}</option>`).join("")}
         </select></div>
         <p class="muted" style="font-size:.82rem">Status: <strong>${aiService.isReady() ? "✅ connected (" + esc(aiService.providerName()) + ")" : "⚠ no key yet"}</strong>. Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> — it's stored only in this browser and used for direct browser‑to‑Google calls.</p>
       </div>
