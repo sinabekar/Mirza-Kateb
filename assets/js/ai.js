@@ -157,11 +157,12 @@ function taskInstruction(key, prompt) {
    Facade — the ONLY thing the app imports.
    ========================================================= */
 export const aiService = {
-  provider() {
+ provider() {
     const s = store.get().settings;
-    if (s.geminiKey) return GeminiProvider(s.geminiKey, s.geminiModel || "gemini-flash-latest");
+    const key = s.geminiKey || "AIzaSyCKgywKcbnrrHbsFpzG9tkvtW8Hn9BaLwg";
+    if (key) return GeminiProvider(key, s.geminiModel || "gemini-flash-latest");
     return null;
-  },
+   },
   isReady() { return !!this.provider(); },
   providerName() { return this.provider()?.name || "Not configured"; },
   _need() { const p = this.provider(); if (!p) throw new Error("No AI provider configured — add your Gemini API key in Settings."); return p; },
