@@ -19,7 +19,7 @@ export function settingsView() {
       <div class="sub">Signed in as ${esc(s.user?.name || "Guest")} · ${esc(s.user?.email || "")}</div>
     </div><button class="btn btn-ghost" id="logout">${icon("logout")} Sign out</button></div>
 
-    <div class="banner mb">◆ MirzaKateb runs entirely in your browser on GitHub Pages. To use real AI, add your own Gemini API key below — it's stored locally and never leaves your device except to call Google directly.</div>
+    <div class="banner mb">◆ MirzaKateb runs entirely in your browser on GitHub Pages. AI is powered by your own Gemini API key — add it below to transcribe and process your recordings. The key is stored locally and only ever calls Google directly.</div>
 
     <div class="card" style="max-width:760px">
       <h3 class="mb">General</h3>
@@ -55,18 +55,17 @@ export function settingsView() {
     <div class="card mt2" style="max-width:760px">
       <h3 class="mb">AI Provider</h3>
       <div class="setting-row">
-        <div><div class="label">Provider</div><div class="desc">The service layer is abstracted — swap providers freely</div></div>
+        <div><div class="label">Provider</div><div class="desc">The service layer is abstracted — more providers can be added</div></div>
         <div class="control"><select id="provider">
-          <option value="demo">Demo (offline, no key)</option>
           <option value="gemini">Google Gemini</option>
         </select></div>
       </div>
-      <div id="geminiCfg" class="${set.provider === "gemini" ? "" : "hidden"}">
+      <div id="geminiCfg">
         <div class="field mt"><label>Gemini API key</label><input type="password" id="gkey" placeholder="AIza…" value="${esc(set.geminiKey)}" /></div>
         <div class="field"><label>Model</label><select id="gmodel">
           ${["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash", "gemini-1.5-flash"].map((m) => `<option ${set.geminiModel === m ? "selected" : ""}>${m}</option>`).join("")}
         </select></div>
-        <p class="muted" style="font-size:.82rem">Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>. Currently active: <strong>${esc(aiService.providerName())}</strong>.</p>
+        <p class="muted" style="font-size:.82rem">Status: <strong>${aiService.isReady() ? "✅ connected (" + esc(aiService.providerName()) + ")" : "⚠ no key yet"}</strong>. Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> — it's stored only in this browser and used for direct browser‑to‑Google calls.</p>
       </div>
     </div>
 
@@ -81,7 +80,7 @@ export function settingsView() {
       <p class="muted" style="font-size:.9rem">Everything is stored locally in this browser.</p>
       <div class="row wrap mt">
         <button class="btn btn-sm" id="exportData">${icon("download")} Export data (JSON)</button>
-        <button class="btn btn-sm btn-danger" id="reset">${icon("trash")} Reset to demo data</button>
+        <button class="btn btn-sm btn-danger" id="reset">${icon("trash")} Erase all data</button>
       </div>
     </div>
   </div>`);
@@ -97,13 +96,9 @@ export function settingsView() {
   root.querySelector("#exp").onchange = (e) => { store.setSetting("exportDefault", e.target.value); toast("Saved"); };
   root.querySelector("#dark").onchange = (e) => { const t = e.target.checked ? "dark" : "light"; store.setSetting("theme", t); applyTheme(t); };
 
-  const provider = root.querySelector("#provider");
-  provider.onchange = (e) => {
-    store.setSetting("provider", e.target.value);
-    root.querySelector("#geminiCfg").classList.toggle("hidden", e.target.value !== "gemini");
-    toast(`Provider: ${e.target.value === "gemini" ? "Gemini" : "Demo"}`);
-  };
-  root.querySelector("#gkey").oninput = (e) => store.setSetting("geminiKey", e.target.value.trim());
+  root.querySelector("#provider").onchange = (e) => store.setSetting("provider", e.target.value);
+  root.querySelector("#gkey").oninput = (e) => { store.setSetting("geminiKey", e.target.value.trim()); };
+  root.querySelector("#gkey").onchange = () => go("settings"); // refresh status line
   root.querySelector("#gmodel").onchange = (e) => store.setSetting("geminiModel", e.target.value);
 
   // workspaces
@@ -128,8 +123,8 @@ export function settingsView() {
     toast("Data exported");
   };
   root.querySelector("#reset").onclick = () => modal({
-    title: "Reset everything?", body: `<p class="muted">This restores the original demo workspaces and deletes your sessions.</p>`,
-    confirmText: "Reset", danger: true, onConfirm: () => { store.reset(); toast("Reset complete"); go(""); },
+    title: "Erase all data?", body: `<p class="muted">This deletes every workspace, session and setting, and starts fresh with one empty workspace. It can't be undone.</p>`,
+    confirmText: "Erase everything", danger: true, onConfirm: () => { store.reset(); toast("Reset complete"); go(""); },
   });
 
   return root;

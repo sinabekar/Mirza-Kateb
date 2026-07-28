@@ -136,6 +136,7 @@ export function recordView() {
     promptStep.innerHTML = `
       <div class="eyebrow" style="color:var(--gold)">Instruct the scribe</div>
       <h2 style="margin:.3rem 0 1rem">What would you like me to do with this recording?</h2>
+      ${aiService.isReady() ? "" : `<div class="banner mb">◆ Add your Gemini API key in <a href="#/settings" style="font-weight:600">Settings</a> to transcribe and process real audio.</div>`}
       <div class="chips" id="taskChips">
         ${TASKS.map((t) => `<button class="chip" data-task="${t.key}" data-label="${esc(t.label)}">${t.icon} ${esc(t.label)}</button>`).join("")}
       </div>
@@ -144,7 +145,7 @@ export function recordView() {
         <label class="row" style="gap:.5rem;font-size:.9rem;color:var(--text-soft)">
           <input type="checkbox" id="autoActions" checked style="width:auto" /> Also extract action items
         </label>
-        <button class="btn btn-primary" id="runBtn" disabled>${icon("send")} Generate with ${esc(aiService.providerName())}</button>
+        <button class="btn btn-primary" id="runBtn" disabled>${icon("send")} ${aiService.isReady() ? "Generate with " + esc(aiService.providerName()) : "Generate"}</button>
       </div>
       <div id="processing" class="hidden center mt2"></div>`;
 
@@ -167,18 +168,32 @@ export function recordView() {
 
   async function runAI(taskKey, prompt, wantActions) {
     const proc = promptStep.querySelector("#processing");
-    promptStep.querySelector("#runBtn").disabled = true;
-    proc.classList.remove("hidden");
-    proc.innerHTML = `<div class="spinner"></div><p class="muted">MirzaKateb is ${taskKey === "transcribe" ? "transcribing" : "reading and writing"}…</p>`;
+    const runBtn = promptStep.querySelector("#runBtn");
 
-    // Demo mode has no real speech-to-text; use a representative transcript.
-    const transcript = demoTranscript(captured.name);
+    if (!aiService.isReady()) {
+      proc.classList.remove("hidden");
+      proc.innerHTML = `<div class="banner" style="text-align:left">◆ To process real audio, add your Gemini API key first.
+        <a href="#/settings" style="font-weight:600">Open Settings →</a></div>`;
+      return;
+    }
+
+    runBtn.disabled = true;
+    proc.classList.remove("hidden");
     const label = TASKS.find((t) => t.key === taskKey)?.label || "Custom prompt";
+    const setStep = (msg) => proc.innerHTML = `<div class="spinner"></div><p class="muted">${esc(msg)}</p>`;
 
     try {
+      // 1) Transcribe the real audio.
+      setStep("Transcribing your recording…");
+      const transcript = await aiService.transcribe(captured.blob);
+
+      // 2) Run the requested task on the transcript.
+      setStep(taskKey === "transcribe" ? "Formatting the transcript…" : `Writing your ${label.toLowerCase()}…`);
       const { content } = await aiService.run({ transcript, prompt, taskKey: taskKey || aiService.inferTask(prompt) });
+
+      // 3) Optionally extract action items.
       let actionItems = [];
-      if (wantActions) actionItems = await aiService.extractActions(transcript);
+      if (wantActions) { setStep("Extracting action items…"); actionItems = await aiService.extractActions(transcript); }
 
       const id = store.addSession({
         workspace: store.get().activeWorkspace,
@@ -188,7 +203,7 @@ export function recordView() {
         audioUrl: captured.url,
         transcript,
         prompt: prompt || label,
-        tags: suggestTags(content),
+        tags: [],
         status: "ready",
         actionItems,
         outputs: [{ id: store.uid(), type: label, created: Date.now(), versions: [{ id: store.uid(), created: Date.now(), content }] }],
@@ -196,8 +211,9 @@ export function recordView() {
       toast("Session created");
       go("session/" + id);
     } catch (err) {
-      proc.innerHTML = `<div class="banner" style="text-align:left">⚠ ${esc(err.message)}<br><span class="muted">Check your Gemini key in Settings, or switch to Demo mode.</span></div>`;
-      promptStep.querySelector("#runBtn").disabled = false;
+      proc.innerHTML = `<div class="banner" style="text-align:left">⚠ ${esc(err.message)}<br>
+        <span class="muted">Check your Gemini key & model in Settings. Recorded audio works best as an uploaded MP3/WAV if your browser records an unsupported format.</span></div>`;
+      runBtn.disabled = false;
     }
   }
 
@@ -209,12 +225,4 @@ function deriveTitle(content, fallback) {
   const h = content.match(/^#\s+(.+)/m);
   if (h) return h[1].replace(/[—–-].*$/, "").trim().slice(0, 60);
   return fallback.replace(/\.[a-z0-9]+$/i, "").replace(/[-_]/g, " ").slice(0, 50) || "Untitled session";
-}
-function suggestTags(content) {
-  const pool = ["meeting", "summary", "planning", "ideas", "notes", "decisions", "follow-up"];
-  const words = content.toLowerCase();
-  return pool.filter((t) => words.includes(t)).slice(0, 3).concat(words.includes("budget") ? ["budget"] : []).slice(0, 3);
-}
-function demoTranscript(name) {
-  return `This is a working session captured as "${name}". The group reviewed the current status and aligned on priorities for the coming weeks. We agreed the first milestone should ship by the end of the month. Nadia will prepare the draft and share it for review. There was a decision to keep scope tight and revisit stretch goals later. A few risks were noted around timelines, and everyone should flag blockers early. The next check-in is scheduled for next week.`;
 }

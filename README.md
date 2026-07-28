@@ -16,7 +16,7 @@ Because it runs entirely in the browser, it deploys to **GitHub Pages** with no 
 | **Dashboard** | Sessions with title, date, duration, workspace, tags, AI status, favourites |
 | **Voice input** | Record (pause / resume / stop) **or** upload MP3 / WAV / M4A, with a live & static **waveform** |
 | **AI prompt** | Ten ready tasks (summary, action items, minutes, blog, LinkedIn, email, decisions, to-do…) + custom instructions |
-| **AI processing** | Abstracted **service layer** — Demo provider (offline) or **Gemini** (your key) with zero UI changes |
+| **AI processing** | Abstracted **service layer** — **real** transcription & tasks via **Gemini** (your key); add more providers with zero UI changes |
 | **Output** | Rich formatted text · copy · edit · regenerate · **version history** · export **TXT / Markdown / PDF / Word** |
 | **History** | Every session stored locally: audio meta, transcript, outputs, prompt, tags, metadata |
 | **Ask Memory** | Per-workspace chat that answers from previous meetings, with citations |
@@ -30,16 +30,19 @@ Because it runs entirely in the browser, it deploys to **GitHub Pages** with no 
 Japanese minimalism meets Persian elegance — warm paper, calm ink, soft shadows, generous whitespace. No glow, no glassmorphism, no neon.
 
 - Warm white `#FAF8F4` · Charcoal `#2C2C2C` · Dark olive `#556052` · Muted gold `#B89C5A`
-- Display type: *Cormorant Garamond* · Body: *Spectral*
+- Typeface: *Vazirmatn* — a calm, warm humanist sans with first-class Latin & Persian glyphs
 
-## 🤖 AI providers
+## 🤖 AI — real, with your own key
 
-The app talks only to a small **service layer** (`assets/js/ai.js`), so the backend is swappable:
+The app talks only to a small **service layer** (`assets/js/ai.js`), so the backend is swappable — and it does **real** work: your actual audio is sent to the model, transcribed, then processed.
 
-- **Demo (offline)** — default. Deterministic, structured output from the transcript. No key, works instantly.
-- **Gemini** — go to **Settings → AI Provider**, pick *Google Gemini*, and paste your own key from [aistudio.google.com/apikey](https://aistudio.google.com/apikey). The key is stored in your browser and used to call Google directly (there is no server on GitHub Pages that could hold it).
+1. Get a **free** Gemini API key at **[aistudio.google.com/apikey](https://aistudio.google.com/apikey)**.
+2. In the app go to **Settings → AI Provider**, paste the key, pick a model (default `gemini-2.5-flash`).
+3. Record or upload audio and choose a task — it transcribes and generates for real.
 
-Adding another provider (OpenAI, a self-hosted model, etc.) means implementing one object with `run` / `chat` / `extractActions` — no UI changes.
+The key is stored only in your browser and is used for direct browser-to-Google calls (there is no server on GitHub Pages that could hold it). Adding another provider (OpenAI, a self-hosted model, etc.) means implementing one object with `transcribe` / `run` / `chat` / `extractActions` — no UI changes.
+
+> Uploaded **MP3/WAV** works everywhere. In-browser recordings are usually WebM/Opus, which most Gemini models accept; if your browser records an unsupported format, upload an MP3/WAV instead.
 
 ## 🚀 Run it on GitHub Pages
 

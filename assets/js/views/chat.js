@@ -9,10 +9,10 @@ import { el, icon, esc, md, initials } from "../ui.js";
 import { go } from "../app.js";
 
 const SUGGESTIONS = [
-  "What did we decide about the budget?",
-  "Who is responsible for the logo?",
+  "What decisions were made?",
+  "Who is responsible for what?",
   "What tasks are still incomplete?",
-  "What was discussed most recently?",
+  "Summarise what was discussed most recently.",
 ];
 
 export function chatView() {
@@ -77,6 +77,12 @@ export function chatView() {
     if (!history.length) stream.innerHTML = "";
     store.pushChat(s.activeWorkspace, { role: "user", content: text });
     stream.appendChild(bubble({ role: "user", content: text }));
+
+    if (!aiService.isReady()) {
+      stream.appendChild(bubble({ role: "ai", content: "To answer from your workspace memory, add your Gemini API key in [Settings](#/settings)." }));
+      stream.scrollTop = stream.scrollHeight;
+      return;
+    }
 
     const thinking = el(`<div class="msg ai"><div class="avatar" style="background:var(--olive);color:#faf8f4">م</div><div class="bubble"><div class="spinner" style="margin:.2rem 0;width:22px;height:22px"></div></div></div>`);
     stream.appendChild(thinking);

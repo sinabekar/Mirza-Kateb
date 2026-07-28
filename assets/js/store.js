@@ -3,14 +3,14 @@
    Single source of truth. Everything flows through here.
    ============================================================ */
 
-const KEY = "mirzakateb.v1";
+const KEY = "mirzakateb.v2";
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
 const defaultSettings = {
   language: "en",
   theme: "light",
-  provider: "demo",          // "demo" | "gemini"
+  provider: "gemini",        // AI is real; abstracted so more providers can slot in
   geminiKey: "",
   geminiModel: "gemini-2.5-flash",
   exportDefault: "md",
@@ -18,109 +18,14 @@ const defaultSettings = {
 };
 
 function seed() {
-  const now = Date.now();
-  const day = 86400000;
-  const wsPersonal = uid(), wsCompany = uid(), wsStartup = uid();
-
-  const workspaces = [
-    { id: wsPersonal, name: "Personal", emoji: "🌿", created: now - day * 40 },
-    { id: wsCompany, name: "Company", emoji: "🏛", created: now - day * 30 },
-    { id: wsStartup, name: "Startup", emoji: "✳", created: now - day * 20 },
-  ];
-
-  const sessions = [
-    {
-      id: uid(), workspace: wsCompany, title: "Q3 Marketing Sync",
-      date: now - day * 3, duration: 1840, favorite: true, status: "ready",
-      tags: ["marketing", "budget", "planning"],
-      audioName: "q3-marketing-sync.m4a", audioUrl: null,
-      transcript: "Sarah opened the meeting by reviewing Q3 goals. The team agreed to increase the paid-social budget to $18,000, up from $12,000 last quarter. Reza raised concerns about attribution tracking. It was decided that the new landing page would launch on the 15th. Mina will own the influencer outreach and report back by Friday. We also discussed pausing the print campaign as it under-performed.",
-      prompt: "Meeting minutes with action items",
-      outputs: [{
-        id: uid(), type: "Meeting minutes", created: now - day * 3,
-        versions: [{ id: uid(), created: now - day * 3, content:
-`# Q3 Marketing Sync — Minutes
-
-**Date:** 3 days ago · **Duration:** 30m 40s
-
-## Decisions
-- Increase paid-social budget to **$18,000** (from $12,000).
-- New landing page launches on the **15th**.
-- **Pause** the print campaign — under-performed last quarter.
-
-## Discussion
-- Reza flagged gaps in attribution tracking; to be revisited next sprint.
-- Influencer outreach to be handled in-house.
-
-> "Let's make the budget work harder, not just bigger." — Sarah`
-        }]
-      }],
-      actionItems: [
-        { id: uid(), task: "Own influencer outreach & report back", owner: "Mina", deadline: "Friday", priority: "high", status: "open" },
-        { id: uid(), task: "Fix attribution tracking gaps", owner: "Reza", deadline: "", priority: "medium", status: "open" },
-        { id: uid(), task: "Ship new landing page", owner: "", deadline: "15th", priority: "high", status: "in-progress" },
-      ],
-    },
-    {
-      id: uid(), workspace: wsCompany, title: "Design Review — Logo Direction",
-      date: now - day * 9, duration: 1220, favorite: false, status: "ready",
-      tags: ["design", "branding"],
-      audioName: "logo-review.mp3", audioUrl: null,
-      transcript: "The team reviewed three logo directions. Everyone preferred the serif mark. Leila will be responsible for the logo refinement and deliver final files next week. We agreed the color palette should stay warm and muted, avoiding bright tech colors.",
-      prompt: "Summarize and extract decisions",
-      outputs: [{
-        id: uid(), type: "Summary", created: now - day * 9,
-        versions: [{ id: uid(), created: now - day * 9, content:
-`# Design Review — Summary
-
-The team converged on the **serif logo mark** for its timeless feel. The palette stays **warm and muted**, deliberately avoiding bright tech colors.
-
-**Owner:** Leila — final logo files due next week.` }]
-      }],
-      actionItems: [
-        { id: uid(), task: "Refine logo & deliver final files", owner: "Leila", deadline: "next week", priority: "high", status: "open" },
-      ],
-    },
-    {
-      id: uid(), workspace: wsStartup, title: "Investor Update Prep",
-      date: now - day * 1, duration: 940, favorite: false, status: "processing",
-      tags: ["fundraising", "metrics"],
-      audioName: "investor-prep.wav", audioUrl: null,
-      transcript: "We walked through the metrics deck. MRR is up 22% month over month. Churn is our weak point at 4.1%. Amir will draft the investor email by Monday.",
-      prompt: "Draft an investor update email",
-      outputs: [],
-      actionItems: [
-        { id: uid(), task: "Draft investor update email", owner: "Amir", deadline: "Monday", priority: "high", status: "open" },
-      ],
-    },
-    {
-      id: uid(), workspace: wsPersonal, title: "Weekly Reflection",
-      date: now - day * 6, duration: 480, favorite: true, status: "ready",
-      tags: ["journal", "personal"],
-      audioName: "reflection.m4a", audioUrl: null,
-      transcript: "This week felt scattered but I made progress on the reading habit. I want to protect mornings for deep work and stop checking messages before 10am.",
-      prompt: "Turn this into a short journal entry",
-      outputs: [{
-        id: uid(), type: "Custom prompt", created: now - day * 6,
-        versions: [{ id: uid(), created: now - day * 6, content:
-`# Weekly Reflection
-
-A scattered week, but the reading habit is holding. The intention for next week is simple: **protect the mornings** for deep work, and don't touch messages before 10am.` }]
-      }],
-      actionItems: [
-        { id: uid(), task: "No messages before 10am", owner: "", deadline: "", priority: "low", status: "open" },
-      ],
-    },
-  ];
-
-  const chats = {}; // workspaceId -> [{role, content, cites, ts}]
-
+  // Clean start — a single empty workspace, no sample content.
+  const wsPersonal = uid();
   return {
     user: null,
-    workspaces,
-    activeWorkspace: wsCompany,
-    sessions,
-    chats,
+    workspaces: [{ id: wsPersonal, name: "Personal", emoji: "🌿", created: Date.now() }],
+    activeWorkspace: wsPersonal,
+    sessions: [],
+    chats: {}, // workspaceId -> [{ role, content, cites, ts }]
     settings: { ...defaultSettings },
   };
 }
