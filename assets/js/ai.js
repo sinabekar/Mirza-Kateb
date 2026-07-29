@@ -159,7 +159,7 @@ function taskInstruction(key, prompt) {
 export const aiService = {
  provider() {
     const s = store.get().settings;
-    const key = s.geminiKey || "AIzaSyCKgywKcbnrrHbsFpzG9tkvtW8Hn9BaLwg";
+    const key = s.geminiKey || "AQ.Ab8RN6IeIREr2WIlg9ltVLXzfV-zXlFY8dFuUvtFz5Z5oDrQ4A";
     if (key) return GeminiProvider(key, s.geminiModel || "gemini-flash-latest");
     return null;
    },
