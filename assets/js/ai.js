@@ -107,9 +107,10 @@ function GeminiProvider(key, model) {
    Transcription uses Whisper (handles webm/mp3/wav/m4a);
    text tasks use a chat model (default gpt-4o-mini).
    ========================================================= */
-function OpenAIProvider(key, model, transcribeModel) {
+function OpenAIProvider(key, model, transcribeModel, baseUrl) {
+  const base = (baseUrl || "https://api.openai.com/v1").replace(/\/+$/, "");
   async function chatCall(system, user) {
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    const res = await fetch(`${base}/chat/completions`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
       body: JSON.stringify({ model, messages: [{ role: "system", content: system }, { role: "user", content: user }] }),
@@ -128,7 +129,7 @@ function OpenAIProvider(key, model, transcribeModel) {
       const fd = new FormData();
       fd.append("file", audioBlob, "recording." + extFor(audioBlob.type));
       fd.append("model", transcribeModel || "whisper-1");
-      const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+      const res = await fetch(`${base}/audio/transcriptions`, {
         method: "POST", headers: { Authorization: `Bearer ${key}` }, body: fd,
       });
       if (!res.ok) throw new Error(await openaiError(res));
@@ -244,7 +245,7 @@ export const aiService = {
   provider() {
     const s = store.get().settings;
     const gemini = () => s.geminiKey ? GeminiProvider(s.geminiKey, s.geminiModel || "gemini-flash-latest") : null;
-    const openai = () => s.openaiKey ? OpenAIProvider(s.openaiKey, s.openaiModel || "gpt-4o-mini", s.openaiTranscribeModel || "whisper-1") : null;
+    const openai = () => s.openaiKey ? OpenAIProvider(s.openaiKey, s.openaiModel || "gpt-4o-mini", s.openaiTranscribeModel || "whisper-1", s.openaiBaseUrl) : null;
     // Honour the chosen provider, then fall back to whichever key exists.
     if (s.provider === "openai") return openai() || gemini();
     return gemini() || openai();

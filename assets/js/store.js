@@ -16,6 +16,7 @@ const defaultSettings = {
   openaiKey: "",
   openaiModel: "gpt-4o-mini",
   openaiTranscribeModel: "whisper-1",
+  openaiBaseUrl: "https://api.openai.com/v1", // any OpenAI-compatible gateway (AvalAI, OpenRouter, Groq…)
   exportDefault: "md",
   recordingQuality: "standard",
 };

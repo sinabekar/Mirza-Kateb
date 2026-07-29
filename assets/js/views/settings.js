@@ -71,14 +71,17 @@ export function settingsView() {
       </div>
 
       <div id="openaiCfg" class="${set.provider === "openai" ? "" : "hidden"}">
-        <div class="field mt"><label>OpenAI API key</label><input type="password" id="okey" placeholder="sk-…" value="${esc(set.openaiKey)}" /></div>
-        <div class="field"><label>Text model</label><select id="omodel">
-          ${["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1"].map((m) => `<option ${set.openaiModel === m ? "selected" : ""}>${m}</option>`).join("")}
-        </select></div>
-        <div class="field"><label>Transcription model</label><select id="otmodel">
-          ${["whisper-1", "gpt-4o-mini-transcribe", "gpt-4o-transcribe"].map((m) => `<option ${set.openaiTranscribeModel === m ? "selected" : ""}>${m}</option>`).join("")}
-        </select></div>
-        <p class="muted" style="font-size:.82rem">Get a key at <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com/api-keys</a>. Whisper transcribes the audio; GPT-4o mini writes the output. Needs OpenAI billing credit.</p>
+        <div class="field mt"><label>API key</label><input type="password" id="okey" placeholder="sk-…  /  aa-…" value="${esc(set.openaiKey)}" /></div>
+        <div class="field"><label>Base URL (OpenAI-compatible)</label><input type="text" id="obase" placeholder="https://api.openai.com/v1" value="${esc(set.openaiBaseUrl)}" /></div>
+        <div class="field"><label>Text model</label>
+          <input type="text" id="omodel" list="omodels" value="${esc(set.openaiModel)}" placeholder="gpt-4o-mini" />
+          <datalist id="omodels">${["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1", "claude-3-5-sonnet", "llama-3.3-70b-versatile"].map((m) => `<option value="${m}">`).join("")}</datalist>
+        </div>
+        <div class="field"><label>Transcription model</label>
+          <input type="text" id="otmodel" list="otmodels" value="${esc(set.openaiTranscribeModel)}" placeholder="whisper-1" />
+          <datalist id="otmodels">${["whisper-1", "gpt-4o-mini-transcribe", "gpt-4o-transcribe", "whisper-large-v3-turbo", "whisper-large-v3"].map((m) => `<option value="${m}">`).join("")}</datalist>
+        </div>
+        <p class="muted" style="font-size:.82rem">Works with any OpenAI-compatible gateway — OpenAI, <strong>AvalAI</strong> (<code>https://api.avalai.ir/v1</code>), OpenRouter, Groq. Key &amp; URL stay in your browser only. Model names must match what your gateway exposes.</p>
       </div>
 
       <p class="muted mt" style="font-size:.82rem">Status: <strong>${aiService.isReady() ? "✅ connected (" + esc(aiService.providerName()) + ")" : "⚠ no key yet"}</strong>. Keys are stored only in this browser and call the provider directly.</p>
@@ -119,8 +122,9 @@ export function settingsView() {
   root.querySelector("#gkey").oninput = (e) => store.setSetting("geminiKey", e.target.value.trim());
   root.querySelector("#gmodel").onchange = (e) => store.setSetting("geminiModel", e.target.value);
   root.querySelector("#okey").oninput = (e) => store.setSetting("openaiKey", e.target.value.trim());
-  root.querySelector("#omodel").onchange = (e) => store.setSetting("openaiModel", e.target.value);
-  root.querySelector("#otmodel").onchange = (e) => store.setSetting("openaiTranscribeModel", e.target.value);
+  root.querySelector("#obase").oninput = (e) => store.setSetting("openaiBaseUrl", e.target.value.trim() || "https://api.openai.com/v1");
+  root.querySelector("#omodel").oninput = (e) => store.setSetting("openaiModel", e.target.value.trim());
+  root.querySelector("#otmodel").oninput = (e) => store.setSetting("openaiTranscribeModel", e.target.value.trim());
   root.querySelector("#gkey").onchange = () => go("settings");
   root.querySelector("#okey").onchange = () => go("settings"); // refresh status line
 
