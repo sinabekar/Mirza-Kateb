@@ -79,7 +79,7 @@ export function chatView() {
     stream.appendChild(bubble({ role: "user", content: text }));
 
     if (!aiService.isReady()) {
-      stream.appendChild(bubble({ role: "ai", content: "To answer from your workspace memory, add your Gemini API key in [Settings](#/settings)." }));
+      stream.appendChild(bubble({ role: "ai", content: "To answer from your workspace memory, connect an AI provider (Gemini or OpenAI) in [Settings](#/settings)." }));
       stream.scrollTop = stream.scrollHeight;
       return;
     }

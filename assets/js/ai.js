@@ -102,6 +102,90 @@ function GeminiProvider(key, model) {
   };
 }
 
+/* =========================================================
+   OpenAIProvider — real AI via the user's OpenAI key.
+   Transcription uses Whisper (handles webm/mp3/wav/m4a);
+   text tasks use a chat model (default gpt-4o-mini).
+   ========================================================= */
+function OpenAIProvider(key, model, transcribeModel) {
+  async function chatCall(system, user) {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+      body: JSON.stringify({ model, messages: [{ role: "system", content: system }, { role: "user", content: user }] }),
+    });
+    if (!res.ok) throw new Error(await openaiError(res));
+    const data = await res.json();
+    const text = data?.choices?.[0]?.message?.content?.trim();
+    if (!text) throw new Error("OpenAI returned an empty response.");
+    return text;
+  }
+
+  return {
+    name: "GPT-4o mini",
+
+    async transcribe(audioBlob) {
+      const fd = new FormData();
+      fd.append("file", audioBlob, "recording." + extFor(audioBlob.type));
+      fd.append("model", transcribeModel || "whisper-1");
+      const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+        method: "POST", headers: { Authorization: `Bearer ${key}` }, body: fd,
+      });
+      if (!res.ok) throw new Error(await openaiError(res));
+      const data = await res.json();
+      return (data.text || "").trim();
+    },
+
+    async run({ transcript, prompt, taskKey }) {
+      if (taskKey === "transcribe") return { content: `# Transcript\n\n${transcript}` };
+      const content = await chatCall(
+        `You are MirzaKateb, a calm, precise writing assistant. ${taskInstruction(taskKey, prompt)} Respond in clean Markdown only — no preamble.`,
+        `--- TRANSCRIPT ---\n${transcript}`,
+      );
+      return { content };
+    },
+
+    async chat({ question, memory }) {
+      if (!memory.length) return { content: "This workspace has no recordings yet. Add one, then ask again.", cites: [] };
+      const context = memory.map((m) => `### ${m.title}\n${m.transcript || "(no transcript)"}`).join("\n\n");
+      const content = await chatCall(
+        "You are the memory of a workspace. Answer using ONLY the meeting notes provided. Cite meeting titles inline. If the answer isn't present, say so plainly.",
+        `QUESTION: ${question}\n\n--- MEETINGS ---\n${context}`,
+      );
+      return { content, cites: memory.map((m) => ({ id: m.id, title: m.title })) };
+    },
+
+    async extractActions(transcript) {
+      if (!transcript?.trim()) return [];
+      try {
+        const raw = await chatCall(
+          "Extract action items as a JSON array only. Each: {\"task\",\"owner\",\"deadline\",\"priority\":\"high|medium|low\",\"status\":\"open\"}. Use \"\" for unknown fields.",
+          transcript,
+        );
+        const json = JSON.parse(raw.replace(/```json|```/g, "").trim());
+        return (Array.isArray(json) ? json : []).map((a) => ({
+          id: store.uid(), task: a.task || "", owner: a.owner || "", deadline: a.deadline || "",
+          priority: ["high", "medium", "low"].includes(a.priority) ? a.priority : "medium",
+          status: a.status || "open",
+        })).filter((a) => a.task);
+      } catch { return []; }
+    },
+  };
+}
+async function openaiError(res) {
+  let detail = res.statusText;
+  try { detail = (await res.json())?.error?.message || detail; } catch {}
+  return `OpenAI ${res.status}: ${String(detail).slice(0, 200)}`;
+}
+function extFor(type = "") {
+  const t = type.toLowerCase();
+  if (t.includes("webm")) return "webm";
+  if (t.includes("mp4") || t.includes("m4a")) return "m4a";
+  if (t.includes("wav")) return "wav";
+  if (t.includes("ogg")) return "ogg";
+  return "mp3";
+}
+
 /* ---- helpers ---- */
 function blobToBase64(blob) {
   return new Promise((resolve, reject) => {
@@ -159,8 +243,11 @@ function taskInstruction(key, prompt) {
 export const aiService = {
   provider() {
     const s = store.get().settings;
-    if (s.geminiKey) return GeminiProvider(s.geminiKey, s.geminiModel || "gemini-flash-latest");
-    return null;
+    const gemini = () => s.geminiKey ? GeminiProvider(s.geminiKey, s.geminiModel || "gemini-flash-latest") : null;
+    const openai = () => s.openaiKey ? OpenAIProvider(s.openaiKey, s.openaiModel || "gpt-4o-mini", s.openaiTranscribeModel || "whisper-1") : null;
+    // Honour the chosen provider, then fall back to whichever key exists.
+    if (s.provider === "openai") return openai() || gemini();
+    return gemini() || openai();
   },
   isReady() { return !!this.provider(); },
   providerName() { return this.provider()?.name || "Not configured"; },

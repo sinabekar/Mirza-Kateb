@@ -10,9 +10,12 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 
 const defaultSettings = {
   language: "en",
   theme: "light",
-  provider: "gemini",        // AI is real; abstracted so more providers can slot in
+  provider: "gemini",        // "gemini" | "openai" — abstracted so more can slot in
   geminiKey: "",
   geminiModel: "gemini-flash-latest",
+  openaiKey: "",
+  openaiModel: "gpt-4o-mini",
+  openaiTranscribeModel: "whisper-1",
   exportDefault: "md",
   recordingQuality: "standard",
 };

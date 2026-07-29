@@ -55,18 +55,33 @@ export function settingsView() {
     <div class="card mt2" style="max-width:760px">
       <h3 class="mb">AI Provider</h3>
       <div class="setting-row">
-        <div><div class="label">Provider</div><div class="desc">The service layer is abstracted — more providers can be added</div></div>
+        <div><div class="label">Provider</div><div class="desc">The service layer is abstracted — pick one, the rest of the app doesn't change</div></div>
         <div class="control"><select id="provider">
           <option value="gemini">Google Gemini</option>
+          <option value="openai">OpenAI · GPT-4o mini</option>
         </select></div>
       </div>
-      <div id="geminiCfg">
+
+      <div id="geminiCfg" class="${set.provider === "openai" ? "hidden" : ""}">
         <div class="field mt"><label>Gemini API key</label><input type="password" id="gkey" placeholder="AIza…" value="${esc(set.geminiKey)}" /></div>
         <div class="field"><label>Model</label><select id="gmodel">
           ${["gemini-flash-latest", "gemini-flash-lite-latest", "gemini-2.0-flash", "gemini-pro-latest"].map((m) => `<option ${set.geminiModel === m ? "selected" : ""}>${m}</option>`).join("")}
         </select></div>
-        <p class="muted" style="font-size:.82rem">Status: <strong>${aiService.isReady() ? "✅ connected (" + esc(aiService.providerName()) + ")" : "⚠ no key yet"}</strong>. Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> — it's stored only in this browser and used for direct browser‑to‑Google calls.</p>
+        <p class="muted" style="font-size:.82rem">Get a key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> — use a classic <code>AIzaSy…</code> key (not an <code>AQ.</code> one).</p>
       </div>
+
+      <div id="openaiCfg" class="${set.provider === "openai" ? "" : "hidden"}">
+        <div class="field mt"><label>OpenAI API key</label><input type="password" id="okey" placeholder="sk-…" value="${esc(set.openaiKey)}" /></div>
+        <div class="field"><label>Text model</label><select id="omodel">
+          ${["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1"].map((m) => `<option ${set.openaiModel === m ? "selected" : ""}>${m}</option>`).join("")}
+        </select></div>
+        <div class="field"><label>Transcription model</label><select id="otmodel">
+          ${["whisper-1", "gpt-4o-mini-transcribe", "gpt-4o-transcribe"].map((m) => `<option ${set.openaiTranscribeModel === m ? "selected" : ""}>${m}</option>`).join("")}
+        </select></div>
+        <p class="muted" style="font-size:.82rem">Get a key at <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com/api-keys</a>. Whisper transcribes the audio; GPT-4o mini writes the output. Needs OpenAI billing credit.</p>
+      </div>
+
+      <p class="muted mt" style="font-size:.82rem">Status: <strong>${aiService.isReady() ? "✅ connected (" + esc(aiService.providerName()) + ")" : "⚠ no key yet"}</strong>. Keys are stored only in this browser and call the provider directly.</p>
     </div>
 
     <div class="card mt2" style="max-width:760px">
@@ -96,10 +111,18 @@ export function settingsView() {
   root.querySelector("#exp").onchange = (e) => { store.setSetting("exportDefault", e.target.value); toast("Saved"); };
   root.querySelector("#dark").onchange = (e) => { const t = e.target.checked ? "dark" : "light"; store.setSetting("theme", t); applyTheme(t); };
 
-  root.querySelector("#provider").onchange = (e) => store.setSetting("provider", e.target.value);
-  root.querySelector("#gkey").oninput = (e) => { store.setSetting("geminiKey", e.target.value.trim()); };
-  root.querySelector("#gkey").onchange = () => go("settings"); // refresh status line
+  root.querySelector("#provider").onchange = (e) => {
+    store.setSetting("provider", e.target.value);
+    root.querySelector("#geminiCfg").classList.toggle("hidden", e.target.value === "openai");
+    root.querySelector("#openaiCfg").classList.toggle("hidden", e.target.value !== "openai");
+  };
+  root.querySelector("#gkey").oninput = (e) => store.setSetting("geminiKey", e.target.value.trim());
   root.querySelector("#gmodel").onchange = (e) => store.setSetting("geminiModel", e.target.value);
+  root.querySelector("#okey").oninput = (e) => store.setSetting("openaiKey", e.target.value.trim());
+  root.querySelector("#omodel").onchange = (e) => store.setSetting("openaiModel", e.target.value);
+  root.querySelector("#otmodel").onchange = (e) => store.setSetting("openaiTranscribeModel", e.target.value);
+  root.querySelector("#gkey").onchange = () => go("settings");
+  root.querySelector("#okey").onchange = () => go("settings"); // refresh status line
 
   // workspaces
   const wsMan = root.querySelector("#wsMan");

@@ -136,7 +136,7 @@ export function recordView() {
     promptStep.innerHTML = `
       <div class="eyebrow" style="color:var(--gold)">Instruct the scribe</div>
       <h2 style="margin:.3rem 0 1rem">What would you like me to do with this recording?</h2>
-      ${aiService.isReady() ? "" : `<div class="banner mb">◆ Add your Gemini API key in <a href="#/settings" style="font-weight:600">Settings</a> to transcribe and process real audio.</div>`}
+      ${aiService.isReady() ? "" : `<div class="banner mb">◆ Connect an AI provider (Gemini or OpenAI) in <a href="#/settings" style="font-weight:600">Settings</a> to transcribe and process real audio.</div>`}
       <div class="chips" id="taskChips">
         ${TASKS.map((t) => `<button class="chip" data-task="${t.key}" data-label="${esc(t.label)}">${t.icon} ${esc(t.label)}</button>`).join("")}
       </div>
@@ -172,7 +172,7 @@ export function recordView() {
 
     if (!aiService.isReady()) {
       proc.classList.remove("hidden");
-      proc.innerHTML = `<div class="banner" style="text-align:left">◆ To process real audio, add your Gemini API key first.
+      proc.innerHTML = `<div class="banner" style="text-align:left">◆ To process real audio, connect an AI provider first.
         <a href="#/settings" style="font-weight:600">Open Settings →</a></div>`;
       return;
     }
@@ -212,7 +212,7 @@ export function recordView() {
       go("session/" + id);
     } catch (err) {
       proc.innerHTML = `<div class="banner" style="text-align:left">⚠ ${esc(err.message)}<br>
-        <span class="muted">Check your Gemini key & model in Settings. Recorded audio works best as an uploaded MP3/WAV if your browser records an unsupported format.</span></div>`;
+        <span class="muted">Check your provider key & model in Settings. If in-browser recording isn't accepted, upload an MP3/WAV/M4A instead.</span></div>`;
       runBtn.disabled = false;
     }
   }
