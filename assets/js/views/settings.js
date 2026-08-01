@@ -92,27 +92,27 @@ export function settingsView() {
         </select></div>
       </div>
 
-      <div id="geminiCfg" class="${set.provider === "openai" ? "hidden" : ""}">
-        <div class="field mt"><label>Gemini API key</label><input type="password" id="gkey" placeholder="AIza…" value="${esc(set.geminiKey)}" /></div>
-        <div class="field"><label>Model</label><select id="gmodel">
-          ${["gemini-flash-latest", "gemini-flash-lite-latest", "gemini-2.0-flash", "gemini-pro-latest"].map((m) => `<option ${set.geminiModel === m ? "selected" : ""}>${m}</option>`).join("")}
-        </select></div>
-        <p class="muted" style="font-size:.82rem">Get a key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> — use a classic <code>AIzaSy…</code> key (not an <code>AQ.</code> one).</p>
-      </div>
+      // <div id="geminiCfg" class="${set.provider === "openai" ? "hidden" : ""}">
+      //   <div class="field mt"><label>Gemini API key</label><input type="password" id="gkey" placeholder="AIza…" value="${esc(set.geminiKey)}" /></div>
+      //   <div class="field"><label>Model</label><select id="gmodel">
+      //     ${["gemini-flash-latest", "gemini-flash-lite-latest", "gemini-2.0-flash", "gemini-pro-latest"].map((m) => `<option ${set.geminiModel === m ? "selected" : ""}>${m}</option>`).join("")}
+      //   </select></div>
+      //   <p class="muted" style="font-size:.82rem">Get a key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> — use a classic <code>AIzaSy…</code> key (not an <code>AQ.</code> one).</p>
+      // </div>
 
-      <div id="openaiCfg" class="${set.provider === "openai" ? "" : "hidden"}">
-        <div class="field mt"><label>API key</label><input type="password" id="okey" placeholder="sk-…  /  aa-…" value="${esc(set.openaiKey)}" /></div>
-        <div class="field"><label>Base URL (OpenAI-compatible)</label><input type="text" id="obase" placeholder="https://api.openai.com/v1" value="${esc(set.openaiBaseUrl)}" /></div>
-        <div class="field"><label>Text model</label>
-          <input type="text" id="omodel" list="omodels" value="${esc(set.openaiModel)}" placeholder="gpt-4o-mini" />
-          <datalist id="omodels">${["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1", "claude-3-5-sonnet", "llama-3.3-70b-versatile"].map((m) => `<option value="${m}">`).join("")}</datalist>
-        </div>
-        <div class="field"><label>Transcription model</label>
-          <input type="text" id="otmodel" list="otmodels" value="${esc(set.openaiTranscribeModel)}" placeholder="whisper-1" />
-          <datalist id="otmodels">${["whisper-1", "gpt-4o-mini-transcribe", "gpt-4o-transcribe", "whisper-large-v3-turbo", "whisper-large-v3"].map((m) => `<option value="${m}">`).join("")}</datalist>
-        </div>
-        <p class="muted" style="font-size:.82rem">Works with any OpenAI-compatible gateway — OpenAI, <strong>AvalAI</strong> (<code>https://api.avalai.ir/v1</code>), OpenRouter, Groq. Key &amp; URL stay in your browser only. Model names must match what your gateway exposes.</p>
-      </div>
+      // <div id="openaiCfg" class="${set.provider === "openai" ? "" : "hidden"}">
+      //   <div class="field mt"><label>API key</label><input type="password" id="okey" placeholder="sk-…  /  aa-…" value="${esc(set.openaiKey)}" /></div>
+      //   <div class="field"><label>Base URL (OpenAI-compatible)</label><input type="text" id="obase" placeholder="https://api.openai.com/v1" value="${esc(set.openaiBaseUrl)}" /></div>
+      //   <div class="field"><label>Text model</label>
+      //     <input type="text" id="omodel" list="omodels" value="${esc(set.openaiModel)}" placeholder="gpt-4o-mini" />
+      //     <datalist id="omodels">${["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1", "claude-3-5-sonnet", "llama-3.3-70b-versatile"].map((m) => `<option value="${m}">`).join("")}</datalist>
+      //   </div>
+      //   <div class="field"><label>Transcription model</label>
+      //     <input type="text" id="otmodel" list="otmodels" value="${esc(set.openaiTranscribeModel)}" placeholder="whisper-1" />
+      //     <datalist id="otmodels">${["whisper-1", "gpt-4o-mini-transcribe", "gpt-4o-transcribe", "whisper-large-v3-turbo", "whisper-large-v3"].map((m) => `<option value="${m}">`).join("")}</datalist>
+      //   </div>
+      //   <p class="muted" style="font-size:.82rem">Works with any OpenAI-compatible gateway — OpenAI, <strong>AvalAI</strong> (<code>https://api.avalai.ir/v1</code>), OpenRouter, Groq. Key &amp; URL stay in your browser only. Model names must match what your gateway exposes.</p>
+      // </div>
 
       <p class="muted mt" style="font-size:.82rem">Status: <strong>${aiService.isReady() ? "✅ connected (" + esc(aiService.providerName()) + ")" : "⚠ no key yet"}</strong>. Keys are stored only in this browser and call the provider directly.</p>
     </div>
