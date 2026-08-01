@@ -16,7 +16,8 @@ Because it runs entirely in the browser, it deploys to **GitHub Pages** with no 
 | **Dashboard** | Sessions with title, date, duration, workspace, tags, AI status, favourites |
 | **Voice input** | Record (pause / resume / stop) **or** upload MP3 / WAV / M4A, with a live & static **waveform** |
 | **AI prompt** | Ten ready tasks (summary, action items, minutes, blog, LinkedIn, email, decisions, to-do…) + custom instructions |
-| **AI processing** | Abstracted **service layer** — **real** transcription & tasks via **Gemini** (your key); add more providers with zero UI changes |
+| **Transcription** | **On-device Whisper** (Transformers.js) — no key, runs in the browser; or a provider API if you prefer |
+| **AI processing** | Abstracted **service layer** — Gemini or OpenAI-compatible (incl. AvalAI/OpenRouter/Groq via custom Base URL) for summaries, actions & chat |
 | **Output** | Rich formatted text · copy · edit · regenerate · **version history** · export **TXT / Markdown / PDF / Word** |
 | **History** | Every session stored locally: audio meta, transcript, outputs, prompt, tags, metadata |
 | **Ask Memory** | Per-workspace chat that answers from previous meetings, with citations |
@@ -32,17 +33,27 @@ Japanese minimalism meets Persian elegance — warm paper, calm ink, soft shadow
 - Warm white `#FAF8F4` · Charcoal `#2C2C2C` · Dark olive `#556052` · Muted gold `#B89C5A`
 - Typeface: *Vazirmatn* — a calm, warm humanist sans with first-class Latin & Persian glyphs
 
-## 🤖 AI — real, with your own key
+## 🤖 AI — on-device by default, optional cloud
 
-The app talks only to a small **service layer** (`assets/js/ai.js`), so the backend is swappable — and it does **real** work: your actual audio is sent to the model, transcribed, then processed.
+Speech-to-text and the language tasks are separate, so the most important part works **with no key at all**.
 
-1. Get a **free** Gemini API key at **[aistudio.google.com/apikey](https://aistudio.google.com/apikey)**.
-2. In the app go to **Settings → AI Provider**, paste the key, pick a model (default `gemini-2.5-flash`).
-3. Record or upload audio and choose a task — it transcribes and generates for real.
+### 1. Transcription — on your device, no API (default)
+Whisper runs **inside your browser** via [Transformers.js](https://github.com/xenova/transformers.js) (WebAssembly / WebGPU). The model downloads once from a CDN, then is cached; after that it works offline and your audio never leaves the device.
 
-The key is stored only in your browser and is used for direct browser-to-Google calls (there is no server on GitHub Pages that could hold it). Adding another provider (OpenAI, a self-hosted model, etc.) means implementing one object with `transcribe` / `run` / `chat` / `extractActions` — no UI changes.
+- **Settings → Transcription → On-device (Whisper)** — the default.
+- Pick a model: **Tiny** (~40 MB, fastest) · **Base** (~145 MB, balanced) · **Small** (~480 MB, best for Persian).
+- Set **Language → فارسی** for the most accurate Farsi.
+- “Convert to text” then needs **zero** setup — no key, no server, no cost.
 
-> Uploaded **MP3/WAV** works everywhere. In-browser recordings are usually WebM/Opus, which most Gemini models accept; if your browser records an unsupported format, upload an MP3/WAV instead.
+Chrome/Edge are fastest (WebGPU). Uploaded MP3/WAV/M4A and in-browser recordings both work.
+
+### 2. Language tasks (summary, action items, chat) — optional LLM
+Summaries, minutes, action-item extraction and the memory chat need a language model. The **service layer** (`assets/js/ai.js`) is provider-agnostic:
+
+- **Google Gemini** — free key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey) (use a classic `AIzaSy…` key).
+- **OpenAI / GPT-4o mini** — key from [platform.openai.com](https://platform.openai.com/api-keys). The **Base URL is configurable**, so any OpenAI-compatible gateway works too (AvalAI, OpenRouter, Groq, a local server).
+
+Keys live only in your browser. Adding another provider means implementing one object with `transcribe` / `run` / `chat` / `extractActions` — no UI changes. Without an LLM, recordings are still transcribed and saved; connect one and hit **Regenerate** to produce the rest.
 
 ## 🚀 Run it on GitHub Pages
 

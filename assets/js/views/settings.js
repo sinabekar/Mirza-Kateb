@@ -53,7 +53,37 @@ export function settingsView() {
     </div>
 
     <div class="card mt2" style="max-width:760px">
-      <h3 class="mb">AI Provider</h3>
+      <h3 class="mb">Transcription <span class="muted" style="font-weight:400;font-size:.9rem">· speech → text</span></h3>
+      <div class="setting-row">
+        <div><div class="label">Engine</div><div class="desc">On-device needs no API key and never uploads your audio</div></div>
+        <div class="control"><select id="tsrc">
+          <option value="local">On-device · Whisper (no key)</option>
+          <option value="provider">Provider API (Gemini / OpenAI)</option>
+        </select></div>
+      </div>
+      <div id="localCfg" class="${set.transcribeSource === "provider" ? "hidden" : ""}">
+        <div class="setting-row">
+          <div><div class="label">Model</div><div class="desc">Bigger = more accurate, but larger download &amp; slower</div></div>
+          <div class="control"><select id="lwmodel">
+            <option value="Xenova/whisper-tiny">Tiny · ~40 MB · fastest</option>
+            <option value="Xenova/whisper-base">Base · ~145 MB · balanced</option>
+            <option value="Xenova/whisper-small">Small · ~480 MB · best for Persian</option>
+          </select></div>
+        </div>
+        <div class="setting-row">
+          <div><div class="label">Language</div><div class="desc">Set Persian for the most accurate Farsi</div></div>
+          <div class="control"><select id="lwlang">
+            <option value="auto">Auto-detect</option>
+            <option value="fa">فارسی (Persian)</option>
+            <option value="en">English</option>
+          </select></div>
+        </div>
+        <p class="muted" style="font-size:.82rem">Runs entirely in your browser via WebAssembly — the model downloads once, then is cached. Chrome/Edge are fastest (WebGPU). No account, no key, nothing leaves your device.</p>
+      </div>
+    </div>
+
+    <div class="card mt2" style="max-width:760px">
+      <h3 class="mb">AI Provider <span class="muted" style="font-weight:400;font-size:.9rem">· summaries, action items, chat</span></h3>
       <div class="setting-row">
         <div><div class="label">Provider</div><div class="desc">The service layer is abstracted — pick one, the rest of the app doesn't change</div></div>
         <div class="control"><select id="provider">
@@ -108,6 +138,18 @@ export function settingsView() {
   root.querySelector("#quality").value = set.recordingQuality;
   root.querySelector("#exp").value = set.exportDefault;
   root.querySelector("#provider").value = set.provider;
+  root.querySelector("#tsrc").value = set.transcribeSource;
+  root.querySelector("#lwmodel").value = set.localWhisperModel;
+  root.querySelector("#lwlang").value = set.localWhisperLang;
+
+  // transcription
+  root.querySelector("#tsrc").onchange = (e) => {
+    store.setSetting("transcribeSource", e.target.value);
+    root.querySelector("#localCfg").classList.toggle("hidden", e.target.value === "provider");
+    toast(e.target.value === "local" ? "Transcription: on-device (no key)" : "Transcription: provider API");
+  };
+  root.querySelector("#lwmodel").onchange = (e) => { store.setSetting("localWhisperModel", e.target.value); toast("Model set"); };
+  root.querySelector("#lwlang").onchange = (e) => { store.setSetting("localWhisperLang", e.target.value); toast("Language set"); };
 
   root.querySelector("#lang").onchange = (e) => { store.setSetting("language", e.target.value); toast("Language set (UI copy stays English in this demo)"); };
   root.querySelector("#quality").onchange = (e) => { store.setSetting("recordingQuality", e.target.value); toast("Saved"); };

@@ -7,6 +7,7 @@
    ============================================================ */
 
 import { store } from "./store.js";
+import { transcribeLocally } from "./local-whisper.js";
 
 /* ---- Task catalogue (shown as prompt suggestions) ---- */
 export const TASKS = [
@@ -250,10 +251,23 @@ export const aiService = {
     if (s.provider === "openai") return openai() || gemini();
     return gemini() || openai();
   },
-  isReady() { return !!this.provider(); },
+  isReady() { return !!this.provider(); },                 // an LLM is configured (for summaries/actions/chat)
   providerName() { return this.provider()?.name || "Not configured"; },
   _need() { const p = this.provider(); if (!p) throw new Error("No AI provider configured — add your Gemini API key in Settings."); return p; },
-  transcribe(blob) { return this._need().transcribe(blob); },
+
+  // Transcription can always happen locally, so it never needs a key.
+  transcribeSource() { return store.get().settings.transcribeSource || "local"; },
+  transcriberName() { return this.transcribeSource() === "local" ? "On-device Whisper" : (this.provider()?.name || "provider"); },
+  canTranscribe() { return this.transcribeSource() === "local" || this.isReady(); },
+
+  transcribe(blob, opts = {}) {
+    const s = store.get().settings;
+    if ((s.transcribeSource || "local") === "local") {
+      return transcribeLocally(blob, { model: s.localWhisperModel, language: s.localWhisperLang, ...opts });
+    }
+    return this._need().transcribe(blob);
+  },
+
   run(args) { return this._need().run(args); },
   chat(args) { return this._need().chat(args); },
   extractActions(t) { return this._need().extractActions(t); },

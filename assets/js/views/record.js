@@ -136,7 +136,11 @@ export function recordView() {
     promptStep.innerHTML = `
       <div class="eyebrow" style="color:var(--gold)">Instruct the scribe</div>
       <h2 style="margin:.3rem 0 1rem">What would you like me to do with this recording?</h2>
-      ${aiService.isReady() ? "" : `<div class="banner mb">◆ Connect an AI provider (Gemini or OpenAI) in <a href="#/settings" style="font-weight:600">Settings</a> to transcribe and process real audio.</div>`}
+      <div class="banner mb" style="background:rgba(85,96,82,.08);border-color:rgba(85,96,82,.25)">
+        ${aiService.transcribeSource() === "local"
+          ? `◎ Transcription runs <strong>on your device</strong> (Whisper, no key). ${aiService.isReady() ? "" : "Text tasks like summaries need an AI model — <a href='#/settings' style='font-weight:600'>connect one</a> (optional)."}`
+          : `◆ Using <strong>${esc(aiService.transcriberName())}</strong> for transcription.`}
+      </div>
       <div class="chips" id="taskChips">
         ${TASKS.map((t) => `<button class="chip" data-task="${t.key}" data-label="${esc(t.label)}">${t.icon} ${esc(t.label)}</button>`).join("")}
       </div>
@@ -169,31 +173,47 @@ export function recordView() {
   async function runAI(taskKey, prompt, wantActions) {
     const proc = promptStep.querySelector("#processing");
     const runBtn = promptStep.querySelector("#runBtn");
-
-    if (!aiService.isReady()) {
-      proc.classList.remove("hidden");
-      proc.innerHTML = `<div class="banner" style="text-align:left">◆ To process real audio, connect an AI provider first.
-        <a href="#/settings" style="font-weight:600">Open Settings →</a></div>`;
-      return;
-    }
-
     runBtn.disabled = true;
     proc.classList.remove("hidden");
     const label = TASKS.find((t) => t.key === taskKey)?.label || "Custom prompt";
-    const setStep = (msg) => proc.innerHTML = `<div class="spinner"></div><p class="muted">${esc(msg)}</p>`;
+    const setStep = (msg, sub = "") => proc.innerHTML = `<div class="spinner"></div><p class="muted">${esc(msg)}</p>${sub ? `<p class="muted" style="font-size:.8rem">${esc(sub)}</p>` : ""}`;
+
+    // Progress reporting for the on-device model (first run downloads it).
+    let maxPct = 0;
+    const onProgress = (p) => {
+      if (p.total) { const pct = Math.round((p.loaded / p.total) * 100); if (pct > maxPct) maxPct = pct; }
+      setStep("Preparing on-device model…", `First time only — downloading Whisper (${maxPct || 0}%). It's cached afterwards.`);
+    };
+    const onStage = (s) => {
+      if (s === "decoding") setStep("Reading your audio…");
+      if (s === "transcribing") setStep("Transcribing on your device…", "Runs locally — longer clips take a little while.");
+    };
 
     try {
-      // 1) Transcribe the real audio.
+      // 1) Transcribe — locally (no key) or via the provider.
       setStep("Transcribing your recording…");
-      const transcript = await aiService.transcribe(captured.blob);
+      const transcript = await aiService.transcribe(captured.blob, { onStage, onProgress });
+      if (!transcript) throw new Error("No speech was detected in the recording.");
 
-      // 2) Run the requested task on the transcript.
-      setStep(taskKey === "transcribe" ? "Formatting the transcript…" : `Writing your ${label.toLowerCase()}…`);
-      const { content } = await aiService.run({ transcript, prompt, taskKey: taskKey || aiService.inferTask(prompt) });
+      // 2) Produce the requested output.
+      let content, outputLabel = label;
+      const key = taskKey || aiService.inferTask(prompt);
+      if (key === "transcribe") {
+        content = `# Transcript\n\n${transcript}`;
+        outputLabel = "Convert to text";
+      } else if (aiService.isReady()) {
+        setStep(`Writing your ${label.toLowerCase()}…`);
+        content = (await aiService.run({ transcript, prompt, taskKey: key })).content;
+      } else {
+        // No LLM configured — keep the transcript and explain.
+        content = `# Transcript\n\n${transcript}\n\n> _“${esc(label)}” needs an AI language model. Connect Gemini or OpenAI in **Settings** and use **Regenerate** — your transcript is saved._`;
+        outputLabel = "Convert to text";
+        toast("Transcribed. Connect an AI model for " + label.toLowerCase());
+      }
 
-      // 3) Optionally extract action items.
+      // 3) Action items (only if an LLM is available).
       let actionItems = [];
-      if (wantActions) { setStep("Extracting action items…"); actionItems = await aiService.extractActions(transcript); }
+      if (wantActions && aiService.isReady()) { setStep("Extracting action items…"); actionItems = await aiService.extractActions(transcript); }
 
       const id = store.addSession({
         workspace: store.get().activeWorkspace,
@@ -206,13 +226,13 @@ export function recordView() {
         tags: [],
         status: "ready",
         actionItems,
-        outputs: [{ id: store.uid(), type: label, created: Date.now(), versions: [{ id: store.uid(), created: Date.now(), content }] }],
+        outputs: [{ id: store.uid(), type: outputLabel, created: Date.now(), versions: [{ id: store.uid(), created: Date.now(), content }] }],
       });
       toast("Session created");
       go("session/" + id);
     } catch (err) {
       proc.innerHTML = `<div class="banner" style="text-align:left">⚠ ${esc(err.message)}<br>
-        <span class="muted">Check your provider key & model in Settings. If in-browser recording isn't accepted, upload an MP3/WAV/M4A instead.</span></div>`;
+        <span class="muted">On-device transcription needs a modern browser (Chrome/Edge recommended). If a recording won't decode, upload an MP3/WAV/M4A instead.</span></div>`;
       runBtn.disabled = false;
     }
   }

@@ -10,7 +10,12 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 
 const defaultSettings = {
   language: "en",
   theme: "light",
-  provider: "gemini",        // "gemini" | "openai" — abstracted so more can slot in
+  // Transcription runs in-browser by default (no key, no server).
+  transcribeSource: "local", // "local" (in-browser Whisper) | "provider" (Gemini/OpenAI API)
+  localWhisperModel: "Xenova/whisper-base",
+  localWhisperLang: "auto",  // "auto" | "fa" | "en"
+
+  provider: "gemini",        // "gemini" | "openai" — LLM for summaries/actions/chat
   geminiKey: "",
   geminiModel: "gemini-flash-latest",
   openaiKey: "",
