@@ -18,6 +18,7 @@ export function shell(route, contentEl, { title, sub, topRight } = {}) {
     { r: "search", label: "Search", ic: "search" },
     { r: "actions", label: "Action Items", ic: "check" },
   ];
+  if (store.isAdmin()) nav.push({ r: "admin", label: "Admin Panel", ic: "gear" });
 
   const navItem = (n) => `<a class="nav-item ${route === n.r ? "active" : ""}" href="#/${n.r === "dashboard" ? "" : n.r}">${icon(n.ic)}<span>${n.label}</span></a>`;
 
@@ -94,9 +95,8 @@ export function addWorkspaceModal() {
       const name = root.querySelector("#wsName").value.trim();
       if (!name) { root.querySelector("#wsName").focus(); return true; }
       const emoji = root.querySelector("#wsEmoji").value.trim() || "◇";
-      store.addWorkspace(name, emoji);
-      toast(`Workspace “${name}” created`);
-      go("");
+      store.addWorkspace(name, emoji).then(() => { toast(`Workspace “${name}” created`); go(""); })
+        .catch((e) => toast(e.message));
     },
   });
 }

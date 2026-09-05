@@ -1,97 +1,91 @@
 # MirzaKateb — میرزا کاتب
 
-> A calm, minimal AI voice workspace that turns recordings into structured knowledge — not just transcription.
+> A calm, minimal AI voice workspace that turns recordings into structured knowledge — with real accounts, server-side storage, and an admin panel.
 
-MirzaKateb ("Mirza" + "Kateb" — the scribe) is a **fully client-side** voice workspace inspired by old Persian scribes and Japanese minimalism. Record or upload audio, ask the AI to do something with it (summarise, extract action items, write minutes, draft an email…), and build a searchable, per-workspace knowledge base you can ask questions of.
+MirzaKateb ("Mirza" + "Kateb" — the scribe) is a full-stack web app inspired by old Persian scribes and Japanese minimalism. Users sign up, record or upload audio, and the server transcribes it (OpenAI Whisper) and turns it into summaries, minutes, action items, and more (GPT). Everything — accounts, audio, transcripts, outputs — is stored on the server, so users get it all back the next time they log in.
 
-Because it runs entirely in the browser, it deploys to **GitHub Pages** with no server and no secrets.
+## Architecture
 
----
+```
+├── public/               # Frontend SPA (vanilla ES modules, no build step)
+│   ├── index.html
+│   └── assets/{css,js}/…
+├── server/               # Node.js + Express API
+│   ├── server.js         # routes: auth, sessions, chat, admin, static
+│   ├── db.js             # SQLite schema + queries (better-sqlite3)
+│   ├── auth.js           # JWT-in-httpOnly-cookie, bcrypt
+│   ├── ai.js             # OpenAI: Whisper transcription + GPT tasks
+│   ├── .env.example
+│   └── data/             # (gitignored) SQLite db + uploaded audio
+└── Dockerfile            # single-container production image
+```
 
-## ✨ Features
+- **Backend:** Node.js + Express, **SQLite** (`better-sqlite3`) — zero external services.
+- **Auth:** email + password, **bcrypt** hashes, signed **JWT in an httpOnly cookie**.
+- **Storage:** audio files on disk under `server/data/uploads/`, referenced from the DB; streamed back only to the authenticated owner. Transcripts, outputs, action items and chat history live in SQLite.
+- **AI:** **OpenAI only**, key kept **server-side in `.env`** (never in the browser). Base URL is configurable, so any OpenAI-compatible gateway (AvalAI, OpenRouter, Groq, a local server) works too.
+- **Frontend:** the same calm SPA (Vazirmatn type, warm-paper palette), now talking to the API.
+
+## Features
 
 | Area | What it does |
 |------|--------------|
-| **Auth** | Email + Google (demo) sign-in with a local profile |
-| **Dashboard** | Sessions with title, date, duration, workspace, tags, AI status, favourites |
-| **Voice input** | Record (pause / resume / stop) **or** upload MP3 / WAV / M4A, with a live & static **waveform** |
-| **AI prompt** | Ten ready tasks (summary, action items, minutes, blog, LinkedIn, email, decisions, to-do…) + custom instructions |
-| **Transcription** | **On-device Whisper** (Transformers.js) — no key, runs in the browser; or a provider API if you prefer |
-| **AI processing** | Abstracted **service layer** — Gemini or OpenAI-compatible (incl. AvalAI/OpenRouter/Groq via custom Base URL) for summaries, actions & chat |
-| **Output** | Rich formatted text · copy · edit · regenerate · **version history** · export **TXT / Markdown / PDF / Word** |
-| **History** | Every session stored locally: audio meta, transcript, outputs, prompt, tags, metadata |
-| **Ask Memory** | Per-workspace chat that answers from previous meetings, with citations |
-| **Workspaces** | Unlimited workspaces (Personal, Company, Startup…), each with independent memory |
-| **Search** | Global search across transcripts, summaries, action items, titles & tags |
-| **Action items** | Auto-extracted task / owner / deadline / priority / status — fully editable |
-| **Settings** | Language · dark mode · AI provider · export defaults · recording quality |
+| **Accounts** | Register / login, bcrypt passwords, 30-day session cookie |
+| **Dashboard** | Your sessions — title, date, duration, tags, AI status, favourites, search |
+| **Voice input** | Record (pause/resume/stop) or upload MP3/WAV/M4A, with waveform. **Audio is uploaded & saved before any processing**, so a transcription hiccup never loses your recording |
+| **AI** | Server-side transcription (Whisper) → summary / minutes / action items / blog / email / … (GPT); copy, edit, regenerate, version history, export TXT/MD/PDF/Word |
+| **History** | Every session persisted server-side and restored on next login |
+| **Ask Memory** | Per-workspace chat answered from your stored transcripts, with citations |
+| **Workspaces** | Unlimited, each with independent memory |
+| **Search** | Across transcripts, summaries, action items, titles, tags |
+| **Action items** | Auto-extracted (task / owner / deadline / priority / status), editable |
+| **Admin panel** | Sign in as the admin to see all users, their recordings, and activity |
+| **Mobile** | Responsive layout, RTL Persian rendering |
 
-## 🎨 Design
+## Run it
 
-Japanese minimalism meets Persian elegance — warm paper, calm ink, soft shadows, generous whitespace. No glow, no glassmorphism, no neon.
-
-- Warm white `#FAF8F4` · Charcoal `#2C2C2C` · Dark olive `#556052` · Muted gold `#B89C5A`
-- Typeface: *Vazirmatn* — a calm, warm humanist sans with first-class Latin & Persian glyphs
-
-## 🤖 AI — on-device by default, optional cloud
-
-Speech-to-text and the language tasks are separate, so the most important part works **with no key at all**.
-
-### 1. Transcription — on your device, no API (default)
-Whisper runs **inside your browser** via [Transformers.js](https://github.com/xenova/transformers.js) (WebAssembly / WebGPU). The model downloads once from a CDN, then is cached; after that it works offline and your audio never leaves the device.
-
-- **Settings → Transcription → On-device (Whisper)** — the default.
-- Pick a model: **Tiny** (~40 MB, fastest) · **Base** (~145 MB, balanced) · **Small** (~480 MB, best for Persian).
-- Set **Language → فارسی** for the most accurate Farsi.
-- “Convert to text” then needs **zero** setup — no key, no server, no cost.
-
-Chrome/Edge are fastest (WebGPU). Uploaded MP3/WAV/M4A and in-browser recordings both work.
-
-### 2. Language tasks (summary, action items, chat) — optional LLM
-Summaries, minutes, action-item extraction and the memory chat need a language model. The **service layer** (`assets/js/ai.js`) is provider-agnostic:
-
-- **Google Gemini** — free key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey) (use a classic `AIzaSy…` key).
-- **OpenAI / GPT-4o mini** — key from [platform.openai.com](https://platform.openai.com/api-keys). The **Base URL is configurable**, so any OpenAI-compatible gateway works too (AvalAI, OpenRouter, Groq, a local server).
-
-Keys live only in your browser. Adding another provider means implementing one object with `transcribe` / `run` / `chat` / `extractActions` — no UI changes. Without an LLM, recordings are still transcribed and saved; connect one and hit **Regenerate** to produce the rest.
-
-## 🚀 Run it on GitHub Pages
-
-This repo ships a workflow at `.github/workflows/deploy.yml` that publishes the site.
-
-1. Push this branch (or merge to `main`).
-2. In the repo, go to **Settings → Pages** and set **Source: GitHub Actions**.
-3. The **Deploy to GitHub Pages** workflow runs automatically and prints the live URL (e.g. `https://<user>.github.io/<repo>/`).
-
-The workflow triggers on pushes to `main` and to the working branch, and can also be run manually via **Actions → Deploy to GitHub Pages → Run workflow**.
-
-### Run locally
-
-No build step. Serve the folder with any static server:
-
+### 1. Configure
 ```bash
-python3 -m http.server 8000
-# then open http://localhost:8000
+cd server
+cp .env.example .env
+# edit .env — set OPENAI_API_KEY, a long JWT_SECRET, and (optionally) admin creds
+npm install
 ```
 
-> Opening `index.html` directly via `file://` won't work because the app uses ES modules — use a local server.
+`.env` keys:
 
-## 🗂 Project structure
+| Key | Purpose |
+|-----|---------|
+| `OPENAI_API_KEY` | **required** — transcription + text tasks |
+| `OPENAI_BASE_URL` | optional gateway (e.g. `https://api.avalai.ir/v1`) |
+| `OPENAI_MODEL` | text model (default `gpt-4o-mini`) |
+| `OPENAI_TRANSCRIBE_MODEL` | speech model (default `whisper-1`) |
+| `JWT_SECRET` | sign session cookies — use a long random string |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | admin login (default `admin` / `admin1245@`) |
+| `NODE_ENV=production` | enables Secure cookies (use behind HTTPS) |
+| `DATA_DIR` | where the db + audio live (default `server/data`) |
 
+### 2. Start
+```bash
+npm start          # http://localhost:3000  (serves the API and the frontend)
 ```
-index.html
-assets/
-  css/app.css          # the whole design system
-  js/
-    app.js             # bootstrap + hash router
-    store.js           # state, persisted to localStorage
-    ai.js              # AI service layer (Demo + Gemini providers)
-    audio.js           # recording + waveform rendering
-    ui.js              # markdown, icons, toast, modal, exports
-    layout.js          # sidebar / workspace switcher / topbar
-    views/             # auth, dashboard, record, session, chat, search, actions, settings
+
+### 3. Admin
+Open the app, sign in with your `ADMIN_EMAIL` / `ADMIN_PASSWORD` (default **admin / admin1245@**) → the **Admin Panel** appears in the sidebar. **Change the admin password in `.env` before going live.**
+
+## Deploy (production)
+
+**Docker (simplest):**
+```bash
+docker build -t mirzakateb .
+docker run -d -p 3000:3000 --env-file server/.env -v mk_data:/data mirzakateb
 ```
+The `-v mk_data:/data` volume keeps the database and uploaded audio across restarts (the image sets `DATA_DIR=/data`).
 
-## Privacy
+**Bare server:** `npm ci --omit=dev` in `server/`, run `node server.js` behind a reverse proxy (nginx/Caddy) that terminates TLS, and set `NODE_ENV=production`. Put the repo in a **private** GitHub repository — the code contains no secrets (they live in the un-committed `.env`), but private is the right default for your product.
 
-Everything — profile, workspaces, sessions, transcripts — lives in your browser's `localStorage`. Nothing is uploaded anywhere. Your Gemini key (if you add one) is used only for direct browser-to-Google API calls.
+## Security notes
+- Secrets live only in `server/.env` (gitignored). No API keys are ever sent to the browser.
+- Passwords are bcrypt-hashed; auth is a signed httpOnly cookie (`Secure` in production).
+- Audio and data are scoped per user; the admin role is required for `/api/admin/*`.
+- Change `JWT_SECRET` and the admin password before deploying.

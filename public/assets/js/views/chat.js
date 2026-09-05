@@ -70,33 +70,34 @@ export function chatView() {
   q.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } });
   root.querySelector("#ask").onclick = send;
 
+  let sending = false;
   async function send() {
     const text = q.value.trim();
-    if (!text) return;
+    if (!text || sending) return;
     q.value = ""; q.style.height = "auto";
-    if (!history.length) stream.innerHTML = "";
-    store.pushChat(s.activeWorkspace, { role: "user", content: text });
+    if (!stream.querySelector(".msg")) stream.innerHTML = "";
     stream.appendChild(bubble({ role: "user", content: text }));
 
     if (!aiService.isReady()) {
-      stream.appendChild(bubble({ role: "ai", content: "To answer from your workspace memory, connect an AI provider (Gemini or OpenAI) in [Settings](#/settings)." }));
+      stream.appendChild(bubble({ role: "ai", content: "The server has no AI configured yet, so I can't answer from memory. An administrator needs to set the API key." }));
       stream.scrollTop = stream.scrollHeight;
       return;
     }
 
+    sending = true;
     const thinking = el(`<div class="msg ai"><div class="avatar" style="background:var(--olive);color:#faf8f4">م</div><div class="bubble"><div class="spinner" style="margin:.2rem 0;width:22px;height:22px"></div></div></div>`);
     stream.appendChild(thinking);
     stream.scrollTop = stream.scrollHeight;
 
     try {
-      const res = await aiService.chat({ question: text, memory });
+      const res = await store.askMemory(s.activeWorkspace, text);
       thinking.remove();
-      store.pushChat(s.activeWorkspace, { role: "ai", content: res.content, cites: res.cites });
-      stream.appendChild(bubble({ role: "ai", ...res }));
+      stream.appendChild(bubble({ role: "ai", content: res.content, cites: res.cites }));
     } catch (e) {
       thinking.remove();
       stream.appendChild(bubble({ role: "ai", content: "⚠ " + e.message }));
     }
+    sending = false;
     stream.scrollTop = stream.scrollHeight;
   }
 

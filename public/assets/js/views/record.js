@@ -136,11 +136,7 @@ export function recordView() {
     promptStep.innerHTML = `
       <div class="eyebrow" style="color:var(--gold)">Instruct the scribe</div>
       <h2 style="margin:.3rem 0 1rem">What would you like me to do with this recording?</h2>
-      <div class="banner mb" style="background:rgba(85,96,82,.08);border-color:rgba(85,96,82,.25)">
-        ${aiService.transcribeSource() === "local"
-          ? `◎ Transcription runs <strong>on your device</strong> (Whisper, no key). ${aiService.isReady() ? "" : "Text tasks like summaries need an AI model — <a href='#/settings' style='font-weight:600'>connect one</a> (optional)."}`
-          : `◆ Using <strong>${esc(aiService.transcriberName())}</strong> for transcription.`}
-      </div>
+      ${aiService.isReady() ? "" : `<div class="banner mb">⚠ AI isn't configured on the server yet. Your recording will still be saved — an administrator needs to set the API key.</div>`}
       <div class="chips" id="taskChips">
         ${TASKS.map((t) => `<button class="chip" data-task="${t.key}" data-label="${esc(t.label)}">${t.icon} ${esc(t.label)}</button>`).join("")}
       </div>
@@ -149,7 +145,7 @@ export function recordView() {
         <label class="row" style="gap:.5rem;font-size:.9rem;color:var(--text-soft)">
           <input type="checkbox" id="autoActions" checked style="width:auto" /> Also extract action items
         </label>
-        <button class="btn btn-primary" id="runBtn" disabled>${icon("send")} ${aiService.isReady() ? "Generate with " + esc(aiService.providerName()) : "Generate"}</button>
+        <button class="btn btn-primary" id="runBtn" disabled>${icon("send")} Transcribe &amp; generate</button>
       </div>
       <div id="processing" class="hidden center mt2"></div>`;
 
@@ -173,66 +169,38 @@ export function recordView() {
   async function runAI(taskKey, prompt, wantActions) {
     const proc = promptStep.querySelector("#processing");
     const runBtn = promptStep.querySelector("#runBtn");
+    if (!captured.blob) { toast("Record or upload audio first"); return; }
     runBtn.disabled = true;
     proc.classList.remove("hidden");
     const label = TASKS.find((t) => t.key === taskKey)?.label || "Custom prompt";
     const setStep = (msg, sub = "") => proc.innerHTML = `<div class="spinner"></div><p class="muted">${esc(msg)}</p>${sub ? `<p class="muted" style="font-size:.8rem">${esc(sub)}</p>` : ""}`;
 
-    // Progress reporting for the on-device model (first run downloads it).
-    let maxPct = 0;
-    const onProgress = (p) => {
-      if (p.total) { const pct = Math.round((p.loaded / p.total) * 100); if (pct > maxPct) maxPct = pct; }
-      setStep("Preparing on-device model…", `First time only — downloading Whisper (${maxPct || 0}%). It's cached afterwards.`);
-    };
-    const onStage = (s) => {
-      if (s === "decoding") setStep("Reading your audio…");
-      if (s === "transcribing") setStep("Transcribing on your device…", "Runs locally — longer clips take a little while.");
-    };
-
     try {
-      // 1) Transcribe — locally (no key) or via the provider.
-      setStep("Transcribing your recording…");
-      const transcript = await aiService.transcribe(captured.blob, { onStage, onProgress });
-      if (!transcript) throw new Error("No speech was detected in the recording.");
+      // 1) Upload the audio FIRST — it's saved on the server before any processing.
+      setStep("Uploading your recording…", "Your audio is saved before transcription, so nothing is lost.");
+      const form = new FormData();
+      form.append("workspace", store.get().activeWorkspace);
+      form.append("title", captured.name.replace(/\.[a-z0-9]+$/i, "") || "New recording");
+      form.append("duration", String(captured.duration || 0));
+      form.append("prompt", prompt || label);
+      form.append("audio", captured.blob, captured.name);
+      const created = await store.createSession(form);
 
-      // 2) Produce the requested output.
-      let content, outputLabel = label;
-      const key = taskKey || aiService.inferTask(prompt);
-      if (key === "transcribe") {
-        content = `# Transcript\n\n${transcript}`;
-        outputLabel = "Convert to text";
-      } else if (aiService.isReady()) {
-        setStep(`Writing your ${label.toLowerCase()}…`);
-        content = (await aiService.run({ transcript, prompt, taskKey: key })).content;
-      } else {
-        // No LLM configured — keep the transcript and explain.
-        content = `# Transcript\n\n${transcript}\n\n> _“${esc(label)}” needs an AI language model. Connect Gemini or OpenAI in **Settings** and use **Regenerate** — your transcript is saved._`;
-        outputLabel = "Convert to text";
-        toast("Transcribed. Connect an AI model for " + label.toLowerCase());
+      // If the server has no AI key, keep the saved audio and open the session.
+      if (!aiService.isReady()) {
+        toast("Saved. AI isn't configured on the server yet.");
+        return go("session/" + created.id);
       }
 
-      // 3) Action items (only if an LLM is available).
-      let actionItems = [];
-      if (wantActions && aiService.isReady()) { setStep("Extracting action items…"); actionItems = await aiService.extractActions(transcript); }
-
-      const id = store.addSession({
-        workspace: store.get().activeWorkspace,
-        title: deriveTitle(content, captured.name),
-        duration: captured.duration,
-        audioName: captured.name,
-        audioUrl: captured.url,
-        transcript,
-        prompt: prompt || label,
-        tags: [],
-        status: "ready",
-        actionItems,
-        outputs: [{ id: store.uid(), type: outputLabel, created: Date.now(), versions: [{ id: store.uid(), created: Date.now(), content }] }],
-      });
+      // 2) Transcribe + generate on the server.
+      setStep("Transcribing & writing…", "This happens securely on the server.");
+      const key = taskKey || "custom";
+      await store.processSession(created.id, { taskKey: key, prompt, wantActions, language: "auto" });
       toast("Session created");
-      go("session/" + id);
+      go("session/" + created.id);
     } catch (err) {
       proc.innerHTML = `<div class="banner" style="text-align:left">⚠ ${esc(err.message)}<br>
-        <span class="muted">On-device transcription needs a modern browser (Chrome/Edge recommended). If a recording won't decode, upload an MP3/WAV/M4A instead.</span></div>`;
+        <span class="muted">Your audio was saved — open the session from the dashboard and use Regenerate to retry.</span></div>`;
       runBtn.disabled = false;
     }
   }

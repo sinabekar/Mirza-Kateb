@@ -45,7 +45,7 @@ export function sessionView(id) {
         <div class="eyebrow" style="color:var(--olive)">Original audio · ${esc(se.audioName || "recording")}</div>
       </div>
       <div class="wave-wrap" style="height:70px"><canvas class="wave-canvas" id="sessWave" style="height:70px"></canvas></div>
-      ${se.audioUrl ? `<audio controls src="${se.audioUrl}" style="width:100%;margin-top:.6rem"></audio>` : `<p class="muted" style="font-size:.82rem;margin:.4rem 0 0">Audio preview isn't stored across reloads — the transcript & outputs below are saved.</p>`}
+      ${se.hasAudio ? `<audio controls src="${store.audioUrl(se.id)}" style="width:100%;margin-top:.6rem"></audio>` : `<p class="muted" style="font-size:.82rem;margin:.4rem 0 0">No audio stored for this session.</p>`}
     </div>
 
     <div class="tabs" id="tabs">
@@ -78,7 +78,7 @@ export function sessionView(id) {
   // ---- waveform ----
   const canvas = root.querySelector("#sessWave");
   requestAnimationFrame(async () => {
-    if (se.audioUrl) { try { await renderWaveform(canvas, se.audioUrl); return; } catch {} }
+    if (se.hasAudio) { try { await renderWaveform(canvas, store.audioUrl(se.id)); return; } catch {} }
     drawPlaceholderWave(canvas, se.title);
   });
 
@@ -216,12 +216,12 @@ function editOutput(id, out, ver, done) {
 }
 
 async function regenerate(id, out, done) {
+  if (!aiService.isReady()) return toast("AI isn't configured on the server");
   const se = store.session(id);
   toast("Regenerating…");
-  const taskKey = TASKS.find((t) => t.label === out.type)?.key || aiService.inferTask(se.prompt);
+  const taskKey = TASKS.find((t) => t.label === out.type)?.key || "custom";
   try {
-    const { content } = await aiService.run({ transcript: se.transcript, prompt: se.prompt, taskKey });
-    store.addVersion(id, out.id, content);
+    await store.generateOutput(id, { taskKey, prompt: se.prompt, outputId: out.id });
     toast("New version generated");
     done();
   } catch (e) { toast(e.message); }
@@ -229,6 +229,7 @@ async function regenerate(id, out, done) {
 
 function generateModal(id, done) {
   const se = store.session(id);
+  if (!aiService.isReady()) return toast("AI isn't configured on the server");
   modal({
     title: "Generate a new output",
     body: `<p class="muted" style="margin-top:-.4rem">Choose a task or write a custom instruction.</p>
@@ -242,11 +243,11 @@ function generateModal(id, done) {
       const custom = root.querySelector("#gPrompt").value.trim();
       const taskKey = active?.dataset.task || (custom ? "custom" : null);
       if (!taskKey) return true;
-      const label = TASKS.find((t) => t.key === taskKey)?.label || "Custom prompt";
       const ok = root.querySelector("[data-ok]"); ok.textContent = "Generating…"; ok.disabled = true;
-      aiService.run({ transcript: se.transcript, prompt: custom || se.prompt, taskKey })
-        .then(({ content }) => { store.addOutput(id, label, content); toast("Output added"); done(); })
-        .catch((e) => toast(e.message));
+      store.generateOutput(id, { taskKey, prompt: custom || se.prompt })
+        .then(() => { toast("Output added"); root.remove(); done(); })
+        .catch((e) => { toast(e.message); ok.textContent = "Generate"; ok.disabled = false; });
+      return true; // keep modal open until the request resolves
     },
   });
   document.querySelectorAll("#gChips .chip").forEach((c) => c.onclick = () => {
