@@ -1,12 +1,13 @@
 // ============================================================
 // server.js — MirzaKateb API + static frontend.
 // ============================================================
-import express from "express";
-import cookieParser from "cookie-parser";
-import multer from "multer";
+import "./env.js"; // MUST be first — loads .env before db/auth/ai read process.env
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
+import express from "express";
+import cookieParser from "cookie-parser";
+import multer from "multer";
 
 import db, { seedAdmin, Users, Workspaces, Sessions, Chats, Admin, UPLOAD_DIR } from "./db.js";
 import { attachUser, requireAuth, requireAdmin, issueCookie, clearCookie, isValidEmail } from "./auth.js";
