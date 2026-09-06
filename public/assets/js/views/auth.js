@@ -25,7 +25,7 @@ export function authView() {
         <p class="muted" style="margin-bottom:1.4rem">Sign in to your workspace.</p>
 
         <form id="authForm">
-          <div class="field" id="nameField" hidden><label>Name</label><input type="text" id="name" placeholder="Your name" autocomplete="name" /></div>
+          <div class="field" id="nameField" style="display:none"><label>Name</label><input type="text" id="name" placeholder="Your name" autocomplete="name" /></div>
           <div class="field"><label id="emailLabel">Email</label><input type="text" id="email" placeholder="you@example.com" autocomplete="username" inputmode="email" required /></div>
           <div class="field"><label>Password</label><input type="password" id="password" placeholder="••••••••" autocomplete="current-password" required /></div>
           <div id="authError" class="banner" style="display:none;background:rgba(166,84,63,.1);border-color:rgba(166,84,63,.35);margin-bottom:1rem"></div>
@@ -48,7 +48,7 @@ export function authView() {
     root.querySelector("#authTitle").textContent = signup ? "Create your account" : "Welcome back";
     submit.textContent = signup ? "Create account" : "Sign in";
     root.querySelector("#toggleMode").textContent = signup ? "Already have an account? Sign in" : "New here? Create an account";
-    nameField.hidden = !signup;
+    nameField.style.display = signup ? "block" : "none";
     root.querySelector("#password").setAttribute("autocomplete", signup ? "new-password" : "current-password");
     errBox.style.display = "none";
   };

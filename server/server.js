@@ -213,7 +213,10 @@ app.get("/api/admin/users/:id", requireAuth, requireAdmin, wrap((req, res) => {
 }));
 
 // ================= STATIC + SPA =================
-app.use(express.static(PUBLIC_DIR));
+app.use(express.static(PUBLIC_DIR, {
+  etag: true,
+  setHeaders: (res) => res.setHeader("Cache-Control", "no-cache"), // always revalidate → picks up updates
+}));
 app.get("*", (req, res, next) => {
   if (req.path.startsWith("/api/")) return next();
   res.sendFile(path.join(PUBLIC_DIR, "index.html"));
