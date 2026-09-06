@@ -13,6 +13,8 @@ export class Recorder {
     this.elapsedBeforePause = 0;
     this.analyser = null;
     this.audioCtx = null;
+    this.micStream = null;
+    this.displayStream = null;
     this.onTick = null;
     this._raf = null;
   }
@@ -22,9 +24,32 @@ export class Recorder {
     return this.elapsedBeforePause;
   }
 
-  async start(canvas) {
-    this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    // pick a supported mime type
+  async start(canvas, { withSystemAudio = false } = {}) {
+    this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const dest = this.audioCtx.createMediaStreamDestination();   // mixed output we record
+    this.analyser = this.audioCtx.createAnalyser();
+    this.analyser.fftSize = 1024;
+
+    // 1) microphone (your voice)
+    this.micStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    });
+    const micSrc = this.audioCtx.createMediaStreamSource(this.micStream);
+    micSrc.connect(dest); micSrc.connect(this.analyser);
+
+    // 2) optional: system / browser-tab audio (the other people in the call)
+    this.displayStream = null;
+    if (withSystemAudio) {
+      this.displayStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+      const sysTracks = this.displayStream.getAudioTracks();
+      // Drop the video we don't need.
+      this.displayStream.getVideoTracks().forEach((t) => t.stop());
+      if (!sysTracks.length) { this._cleanup(); const e = new Error("NO_SYSTEM_AUDIO"); e.code = "NO_SYSTEM_AUDIO"; throw e; }
+      const sysSrc = this.audioCtx.createMediaStreamSource(new MediaStream([sysTracks[0]]));
+      sysSrc.connect(dest); sysSrc.connect(this.analyser);
+    }
+
+    this.stream = dest.stream;
     const mime = ["audio/webm", "audio/mp4", "audio/ogg"].find((m) => MediaRecorder.isTypeSupported(m)) || "";
     this.mediaRecorder = new MediaRecorder(this.stream, mime ? { mimeType: mime } : undefined);
     this.chunks = [];
@@ -33,13 +58,6 @@ export class Recorder {
     this.state = "recording";
     this.startedAt = Date.now();
     this.elapsedBeforePause = 0;
-
-    // live waveform
-    this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const src = this.audioCtx.createMediaStreamSource(this.stream);
-    this.analyser = this.audioCtx.createAnalyser();
-    this.analyser.fftSize = 1024;
-    src.connect(this.analyser);
     if (canvas) this._drawLive(canvas);
   }
 
@@ -74,6 +92,8 @@ export class Recorder {
 
   _cleanup() {
     cancelAnimationFrame(this._raf);
+    this.micStream?.getTracks().forEach((t) => t.stop());
+    this.displayStream?.getTracks().forEach((t) => t.stop());
     this.stream?.getTracks().forEach((t) => t.stop());
     this.audioCtx?.close().catch(() => {});
     this.analyser = null;

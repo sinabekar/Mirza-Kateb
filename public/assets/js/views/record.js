@@ -33,7 +33,13 @@ export function recordView() {
         <div class="rec-controls" id="recControls">
           <button class="btn btn-primary" id="startBtn">${icon("mic")} Start recording</button>
         </div>
-        <p class="muted" style="font-size:.82rem;margin-top:1rem">Your microphone stays in the browser. Nothing is uploaded.</p>
+        <label class="row" style="gap:.5rem;justify-content:center;font-size:.85rem;color:var(--text-soft);margin-top:1rem">
+          <input type="checkbox" id="withSystem" style="width:auto" />
+          Also capture meeting / tab audio (record others)
+        </label>
+        <p class="muted" style="font-size:.78rem;margin-top:.4rem" id="sysHint" hidden>
+          A share dialog will open — pick the <strong>meeting tab</strong> and turn on <strong>“Share tab audio”</strong>. Chrome/Edge only.
+        </p>
       </div>
 
       <div class="dropzone" id="drop">
@@ -56,10 +62,21 @@ export function recordView() {
 
   function setTimer() { timer.innerHTML = `<span class="rec-dot ${recorder?.state === "recording" ? "live" : ""}" style="opacity:${recorder ? 1 : 0}"></span>${fmtClock(recorder?.seconds || 0)}`; }
 
+  // show the hint when meeting-capture is ticked
+  const withSystem = root.querySelector("#withSystem");
+  withSystem.addEventListener("change", () => { root.querySelector("#sysHint").hidden = !withSystem.checked; });
+
   root.querySelector("#startBtn").onclick = async () => {
     recorder = new Recorder();
-    try { await recorder.start(liveWave); }
-    catch { toast("Microphone permission denied"); recorder = null; return; }
+    try {
+      await recorder.start(liveWave, { withSystemAudio: withSystem.checked });
+    } catch (err) {
+      recorder = null;
+      if (err.code === "NO_SYSTEM_AUDIO") toast("You didn't share tab audio — tick “Share tab audio” in the dialog");
+      else if (err.name === "NotAllowedError") toast("Permission denied for mic/screen");
+      else toast("Couldn't start recording: " + (err.message || err.name));
+      return;
+    }
     tick = setInterval(setTimer, 200);
     controls.innerHTML = `
       <button class="icon-btn" id="pauseBtn" title="Pause" style="border:1px solid var(--line-strong)">${icon("pause")}</button>
