@@ -43,9 +43,11 @@ export function sessionView(id) {
     <div class="card" style="padding:1.2rem 1.4rem;margin-bottom:1.4rem">
       <div class="row between wrap" style="margin-bottom:.6rem">
         <div class="eyebrow" style="color:var(--olive)">Original audio · ${esc(se.audioName || "recording")}</div>
+        ${se.hasAudio ? `<button class="btn btn-sm" id="retranscribe">${icon("refresh")} Re-transcribe</button>` : ""}
       </div>
       <div class="wave-wrap" style="height:70px"><canvas class="wave-canvas" id="sessWave" style="height:70px"></canvas></div>
       ${se.hasAudio ? `<audio controls src="${store.audioUrl(se.id)}" style="width:100%;margin-top:.6rem"></audio>` : `<p class="muted" style="font-size:.82rem;margin:.4rem 0 0">No audio stored for this session.</p>`}
+      <div id="retxStatus" class="mt" hidden></div>
     </div>
 
     <div class="tabs" id="tabs">
@@ -63,6 +65,27 @@ export function sessionView(id) {
     confirmText: "Delete", danger: true, onConfirm: () => { store.removeSession(id); toast("Session deleted"); go(""); },
   });
   root.querySelector("#sTitle").onclick = () => renameTitle(id, root.querySelector("#sTitle"));
+
+  // ---- re-transcribe the saved audio (re-runs server transcription) ----
+  const retxBtn = root.querySelector("#retranscribe");
+  if (retxBtn) retxBtn.onclick = () => {
+    if (!aiService.isReady()) return toast("AI isn't configured on the server");
+    modal({
+      title: "Re-transcribe this recording?",
+      body: `<p class="muted">This runs transcription again on the saved audio and adds a fresh “Convert to text” output. Useful if the first attempt came back empty.</p>`,
+      confirmText: "Re-transcribe",
+      onConfirm: (m) => {
+        const status = root.querySelector("#retxStatus");
+        status.hidden = false;
+        status.innerHTML = `<div class="banner"><div class="spinner" style="width:20px;height:20px;margin:0 .5rem 0 0"></div> Transcribing the saved audio… long meetings are split into chunks, so this can take a while.</div>`;
+        retxBtn.disabled = true;
+        store.processSession(id, { taskKey: "transcribe", wantActions: true, language: "auto" })
+          .then(() => { toast("Transcribed"); go("session/" + id); })
+          .catch((e) => { status.innerHTML = `<div class="banner">⚠ ${esc(e.message)}</div>`; retxBtn.disabled = false; });
+        // modal closes; progress shows in the page
+      },
+    });
+  };
 
   renderTags();
   function renderTags() {
