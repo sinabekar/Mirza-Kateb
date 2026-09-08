@@ -119,8 +119,11 @@ app.post("/api/sessions/:id/process", requireAuth, wrap(async (req, res) => {
   Sessions.update(req.user.id, raw.id, { status: "processing" });
 
   try {
-    const transcript = await transcribe(audioPath, raw.audio_mime, language);
-    if (!transcript) throw new Error("No speech was detected in the recording.");
+    const transcript = (await transcribe(audioPath, raw.audio_mime, language) || "").trim();
+    console.log(`[process] session ${raw.id}: transcript ${transcript.length} chars (${raw.audio_mime})`);
+    if (transcript.length < 3) {
+      throw new Error("No speech was detected. The recording may be silent or an unsupported format — make sure you spoke (and, for meetings, that 'Share tab audio' was on), or upload an MP3/WAV.");
+    }
 
     const key = taskKey || inferTask(prompt);
     const label = TASKS.find((t) => t.key === key)?.label || "Convert to text";
@@ -144,7 +147,8 @@ app.post("/api/sessions/:id/outputs", requireAuth, wrap(async (req, res) => {
   if (!aiConfigured()) return res.status(503).json({ error: "AI is not configured on the server." });
   const raw = Sessions.rawById(req.user.id, req.params.id);
   if (!raw) return res.status(404).json({ error: "Session not found." });
-  const transcript = raw.transcript || "";
+  const transcript = (raw.transcript || "").trim();
+  if (transcript.length < 3) return res.status(400).json({ error: "This session has no transcript to work from. Re-record with clear audio, or upload an MP3/WAV." });
   const { taskKey, prompt, outputId } = req.body || {};
   const key = taskKey || inferTask(prompt);
   const label = TASKS.find((t) => t.key === key)?.label || "Custom prompt";
