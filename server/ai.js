@@ -69,8 +69,11 @@ export async function transcribe(filePath, mime, language = "auto") {
    Whisper always accepts, and splits long recordings into chunks so meetings
    of any length work. Falls back to a single direct request if ffmpeg is
    missing or the clip is short. */
-const CHUNK_SECONDS = Number(process.env.TRANSCRIBE_CHUNK_SECONDS) || 480; // 8 min
-const DIRECT_MAX_SECONDS = Number(process.env.TRANSCRIBE_DIRECT_MAX) || 600; // ≤10 min → single request
+// Compressed mono MP3 keeps each request small (~6 KB/s → a 5-min chunk ≈ 1.8 MB),
+// well under gateway upload limits, while staying great for speech recognition.
+const CHUNK_SECONDS = Number(process.env.TRANSCRIBE_CHUNK_SECONDS) || 300;      // 5 min chunks
+const DIRECT_MAX_SECONDS = Number(process.env.TRANSCRIBE_DIRECT_MAX) || 300;    // ≤5 min → single request
+const MP3_ARGS = ["-ar", "16000", "-ac", "1", "-b:a", "48k"];
 
 export async function transcribeLong(filePath, mime, language = "auto") {
   if (!KEY) throw new AIError("Server has no OPENAI_API_KEY configured.");
@@ -80,21 +83,21 @@ export async function transcribeLong(filePath, mime, language = "auto") {
   const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "mk-tx-"));
   try {
     if (!duration || duration <= DIRECT_MAX_SECONDS) {
-      // Short: convert whole thing to a clean WAV (fixes odd webm/opus too).
-      const wav = path.join(dir, "audio.wav");
-      await execFileP("ffmpeg", ["-y", "-i", filePath, "-ar", "16000", "-ac", "1", wav], { maxBuffer: 1 << 26 });
-      return transcribe(wav, "audio/wav", language);
+      // Short: transcode to a small, clean MP3 (also fixes odd webm/opus).
+      const mp3 = path.join(dir, "audio.mp3");
+      await execFileP("ffmpeg", ["-y", "-i", filePath, ...MP3_ARGS, mp3], { maxBuffer: 1 << 26 });
+      return transcribe(mp3, "audio/mpeg", language);
     }
-    // Long: split into WAV chunks and transcribe sequentially.
+    // Long: split into small MP3 chunks and transcribe sequentially.
     await execFileP("ffmpeg", [
-      "-y", "-i", filePath, "-ar", "16000", "-ac", "1",
+      "-y", "-i", filePath, ...MP3_ARGS,
       "-f", "segment", "-segment_time", String(CHUNK_SECONDS), "-reset_timestamps", "1",
-      path.join(dir, "chunk-%03d.wav"),
+      path.join(dir, "chunk-%03d.mp3"),
     ], { maxBuffer: 1 << 26 });
     const chunks = (await fs.promises.readdir(dir)).filter((f) => f.startsWith("chunk-")).sort();
     const parts = [];
     for (const f of chunks) {
-      const text = await transcribe(path.join(dir, f), "audio/wav", language);
+      const text = await transcribe(path.join(dir, f), "audio/mpeg", language);
       if (text) parts.push(text.trim());
     }
     return parts.join("\n\n");
