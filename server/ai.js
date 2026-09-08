@@ -15,7 +15,12 @@ const KEY = process.env.OPENAI_API_KEY || "";
 const CHAT_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
 const TRANSCRIBE_MODEL = process.env.OPENAI_TRANSCRIBE_MODEL || "whisper-1";
 
-export const aiConfigured = () => !!KEY;
+// Optional separate Gemini key + model for higher-quality transcription.
+const GEMINI_KEY = process.env.GEMINI_API_KEY || "";
+const GEMINI_TRANSCRIBE_MODEL = process.env.GEMINI_TRANSCRIBE_MODEL || "gemini-2.0-flash-lite";
+const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta";
+
+export const aiConfigured = () => !!(KEY || GEMINI_KEY);
 
 export const TASKS = [
   { key: "transcribe", label: "Convert to text" },
@@ -48,9 +53,35 @@ async function chat(system, user, { json = false } = {}) {
   return (data?.choices?.[0]?.message?.content || "").trim();
 }
 
+// ---- Gemini native audio transcription ----
+// Gemini understands audio as a multimodal LLM — far better than ASR-only Whisper
+// for Persian, mixed-language, low-quality audio, and noisy environments.
+async function transcribeGemini(filePath, mime, language = "auto") {
+  const buf = await fs.promises.readFile(filePath);
+  const b64 = buf.toString("base64");
+  const audioMime = mime?.includes("mp3") || mime?.includes("mpeg") ? "audio/mp3" : (mime || "audio/wav");
+
+  const langHint = (language && language !== "auto")
+    ? `The speaker is using ${language}. `
+    : "The audio may be in Persian/Farsi, English, or a mix. ";
+
+  const prompt = `${langHint}Transcribe the audio exactly as spoken. Output only the transcription text with no headings, labels, or commentary. Preserve the original language faithfully.`;
+
+  const res = await fetch(`${GEMINI_BASE}/models/${GEMINI_TRANSCRIBE_MODEL}:generateContent?key=${GEMINI_KEY}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ parts: [{ inlineData: { mimeType: audioMime, data: b64 } }, { text: prompt }] }],
+    }),
+  });
+  if (!res.ok) throw new AIError(`Gemini transcription ${res.status}: ${(await res.text()).slice(0, 300)}`);
+  const data = await res.json();
+  return (data?.candidates?.[0]?.content?.parts?.[0]?.text || "").trim();
+}
+
 // ---- Transcription (multipart to /audio/transcriptions) ----
 export async function transcribe(filePath, mime, language = "auto") {
-  if (!KEY) throw new AIError("Server has no OPENAI_API_KEY configured.");
+  if (!KEY) throw new AIError("Server has no OPENAI_API_KEY configured. Set OPENAI_API_KEY or use GEMINI_API_KEY for transcription.");
   const buf = await fs.promises.readFile(filePath);
   const form = new FormData();
   form.append("file", new Blob([buf], { type: mime || "audio/wav" }), "audio" + extFor(mime));
@@ -76,8 +107,13 @@ const DIRECT_MAX_SECONDS = Number(process.env.TRANSCRIBE_DIRECT_MAX) || 300;    
 const MP3_ARGS = ["-ar", "16000", "-ac", "1", "-b:a", "48k"];
 
 export async function transcribeLong(filePath, mime, language = "auto") {
-  if (!KEY) throw new AIError("Server has no OPENAI_API_KEY configured.");
-  if (!(await ffmpegAvailable())) return transcribe(filePath, mime, language); // no ffmpeg → best effort
+  if (!KEY && !GEMINI_KEY) throw new AIError("No API key configured. Set OPENAI_API_KEY or GEMINI_API_KEY in .env.");
+
+  // Prefer Gemini when a key is available — much better quality for Persian / mixed-language audio.
+  const useGemini = !!GEMINI_KEY;
+  const transcribeFn = useGemini ? transcribeGemini : transcribe;
+
+  if (!(await ffmpegAvailable())) return transcribeFn(filePath, mime, language); // no ffmpeg → best effort
 
   const duration = await audioDuration(filePath);
   const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "mk-tx-"));
@@ -86,7 +122,7 @@ export async function transcribeLong(filePath, mime, language = "auto") {
       // Short: transcode to a small, clean MP3 (also fixes odd webm/opus).
       const mp3 = path.join(dir, "audio.mp3");
       await execFileP("ffmpeg", ["-y", "-i", filePath, ...MP3_ARGS, mp3], { maxBuffer: 1 << 26 });
-      return transcribe(mp3, "audio/mpeg", language);
+      return transcribeFn(mp3, "audio/mpeg", language);
     }
     // Long: split into small MP3 chunks and transcribe sequentially.
     await execFileP("ffmpeg", [
@@ -97,7 +133,7 @@ export async function transcribeLong(filePath, mime, language = "auto") {
     const chunks = (await fs.promises.readdir(dir)).filter((f) => f.startsWith("chunk-")).sort();
     const parts = [];
     for (const f of chunks) {
-      const text = await transcribe(path.join(dir, f), "audio/mpeg", language);
+      const text = await transcribeFn(path.join(dir, f), "audio/mpeg", language);
       if (text) parts.push(text.trim());
     }
     return parts.join("\n\n");
