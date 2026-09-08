@@ -127,10 +127,16 @@ export async function runTask({ transcript, prompt, taskKey }) {
 export async function extractActions(transcript) {
   if (!transcript?.trim() || !KEY) return [];
   try {
+    // Provider-agnostic: don't rely on OpenAI json-mode (Claude etc. may lack it);
+    // ask for JSON only and parse it out of the reply.
     const raw = await chat(
-      `Extract action items from the transcript. Return a JSON object: {"items":[{"task","owner","deadline","priority":"high|medium|low","status":"open"}]}. Use "" for unknown fields. Reply in the transcript's language.`,
-      transcript, { json: true });
-    const items = JSON.parse(raw).items || [];
+      `Extract action items from the transcript. Reply with ONLY a JSON object, no prose, no code fences: {"items":[{"task","owner","deadline","priority":"high|medium|low","status":"open"}]}. Use "" for unknown fields. Keep text in the transcript's language.`,
+      transcript);
+    let txt = raw.replace(/```json|```/gi, "").trim();
+    const m = txt.match(/\{[\s\S]*\}|\[[\s\S]*\]/);        // first JSON object/array
+    if (m) txt = m[0];
+    const parsed = JSON.parse(txt);
+    const items = Array.isArray(parsed) ? parsed : (parsed.items || []);
     return items.map((a) => ({
       id: rid(), task: a.task || "", owner: a.owner || "", deadline: a.deadline || "",
       priority: ["high", "medium", "low"].includes(a.priority) ? a.priority : "medium",
