@@ -11,7 +11,7 @@ import multer from "multer";
 
 import db, { seedAdmin, Users, Workspaces, Sessions, Chats, Admin, UPLOAD_DIR } from "./db.js";
 import { attachUser, requireAuth, requireAdmin, issueCookie, clearCookie, isValidEmail } from "./auth.js";
-import { transcribe, runTask, extractActions, askMemory, aiConfigured, TASKS, inferTask } from "./ai.js";
+import { transcribeLong, runTask, extractActions, askMemory, aiConfigured, TASKS, inferTask } from "./ai.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, "..", "public");
@@ -119,7 +119,7 @@ app.post("/api/sessions/:id/process", requireAuth, wrap(async (req, res) => {
   Sessions.update(req.user.id, raw.id, { status: "processing" });
 
   try {
-    const transcript = (await transcribe(audioPath, raw.audio_mime, language) || "").trim();
+    const transcript = (await transcribeLong(audioPath, raw.audio_mime, language) || "").trim();
     console.log(`[process] session ${raw.id}: transcript ${transcript.length} chars (${raw.audio_mime})`);
     if (transcript.length < 3) {
       throw new Error("No speech was detected. The recording may be silent or an unsupported format — make sure you spoke (and, for meetings, that 'Share tab audio' was on), or upload an MP3/WAV.");

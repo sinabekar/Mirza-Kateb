@@ -4,6 +4,11 @@
 // AvalAI, OpenRouter, Groq, or a local server all work.
 // ============================================================
 import fs from "fs";
+import os from "os";
+import path from "path";
+import { execFile } from "child_process";
+import { promisify } from "util";
+const execFileP = promisify(execFile);
 
 const BASE = (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, "");
 const KEY = process.env.OPENAI_API_KEY || "";
@@ -57,6 +62,55 @@ export async function transcribe(filePath, mime, language = "auto") {
   if (!res.ok) throw new AIError(`Transcription ${res.status}: ${(await res.text()).slice(0, 200)}`);
   const data = await res.json();
   return (data.text || "").trim();
+}
+
+/* ---- Long-audio transcription ----
+   Routes audio through ffmpeg (when present) to clean 16 kHz mono WAV, which
+   Whisper always accepts, and splits long recordings into chunks so meetings
+   of any length work. Falls back to a single direct request if ffmpeg is
+   missing or the clip is short. */
+const CHUNK_SECONDS = Number(process.env.TRANSCRIBE_CHUNK_SECONDS) || 480; // 8 min
+const DIRECT_MAX_SECONDS = Number(process.env.TRANSCRIBE_DIRECT_MAX) || 600; // ≤10 min → single request
+
+export async function transcribeLong(filePath, mime, language = "auto") {
+  if (!KEY) throw new AIError("Server has no OPENAI_API_KEY configured.");
+  if (!(await ffmpegAvailable())) return transcribe(filePath, mime, language); // no ffmpeg → best effort
+
+  const duration = await audioDuration(filePath);
+  const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "mk-tx-"));
+  try {
+    if (!duration || duration <= DIRECT_MAX_SECONDS) {
+      // Short: convert whole thing to a clean WAV (fixes odd webm/opus too).
+      const wav = path.join(dir, "audio.wav");
+      await execFileP("ffmpeg", ["-y", "-i", filePath, "-ar", "16000", "-ac", "1", wav], { maxBuffer: 1 << 26 });
+      return transcribe(wav, "audio/wav", language);
+    }
+    // Long: split into WAV chunks and transcribe sequentially.
+    await execFileP("ffmpeg", [
+      "-y", "-i", filePath, "-ar", "16000", "-ac", "1",
+      "-f", "segment", "-segment_time", String(CHUNK_SECONDS), "-reset_timestamps", "1",
+      path.join(dir, "chunk-%03d.wav"),
+    ], { maxBuffer: 1 << 26 });
+    const chunks = (await fs.promises.readdir(dir)).filter((f) => f.startsWith("chunk-")).sort();
+    const parts = [];
+    for (const f of chunks) {
+      const text = await transcribe(path.join(dir, f), "audio/wav", language);
+      if (text) parts.push(text.trim());
+    }
+    return parts.join("\n\n");
+  } finally {
+    fs.promises.rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+async function ffmpegAvailable() {
+  try { await execFileP("ffmpeg", ["-version"]); return true; } catch { return false; }
+}
+async function audioDuration(filePath) {
+  try {
+    const { stdout } = await execFileP("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", filePath]);
+    return parseFloat(stdout.trim()) || 0;
+  } catch { return 0; }
 }
 
 // ---- Task on a transcript ----

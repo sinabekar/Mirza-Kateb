@@ -2,9 +2,11 @@
 FROM node:20-slim AS base
 WORKDIR /app
 
-# Install server deps (better-sqlite3 needs build tools at install time)
+# ffmpeg stays at runtime (audio conversion + chunking); build tools are removed after install.
 COPY server/package*.json ./server/
-RUN apt-get update && apt-get install -y --no-install-recommends python3 build-essential \
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ffmpeg \
+ && apt-get install -y --no-install-recommends python3 build-essential \
  && cd server && npm ci --omit=dev \
  && apt-get purge -y build-essential python3 && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
