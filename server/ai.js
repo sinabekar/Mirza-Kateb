@@ -25,13 +25,7 @@ export const aiConfigured = () => !!(KEY || GEMINI_KEY);
 export const TASKS = [
   { key: "transcribe", label: "Convert to text" },
   { key: "summary", label: "Summarize" },
-  { key: "actions", label: "Extract action items" },
   { key: "minutes", label: "Meeting minutes" },
-  { key: "blog", label: "Convert to blog" },
-  { key: "linkedin", label: "LinkedIn post" },
-  { key: "email", label: "Generate email" },
-  { key: "decisions", label: "Extract decisions" },
-  { key: "todo", label: "Generate to-do list" },
   { key: "custom", label: "Custom prompt" },
 ];
 
