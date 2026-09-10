@@ -15,7 +15,11 @@ const KEY = process.env.OPENAI_API_KEY || "";
 const CHAT_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
 const TRANSCRIBE_MODEL = process.env.OPENAI_TRANSCRIBE_MODEL || "whisper-1";
 
-// Optional separate Gemini key + model for higher-quality transcription.
+// When the transcription model is a multimodal chat model (e.g. gemini-3.5-flash),
+// audio is sent via chat/completions instead of the Whisper audio/transcriptions endpoint.
+const TRANSCRIBE_VIA_CHAT = /^gemini/i.test(TRANSCRIBE_MODEL);
+
+// Optional Google-native Gemini key (direct API — only works outside Iran).
 const GEMINI_KEY = process.env.GEMINI_API_KEY || "";
 const GEMINI_TRANSCRIBE_MODEL = process.env.GEMINI_TRANSCRIBE_MODEL || "gemini-2.0-flash-lite";
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta";
@@ -43,6 +47,40 @@ async function chat(system, user, { json = false } = {}) {
     }),
   });
   if (!res.ok) throw new AIError(`LLM ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  const data = await res.json();
+  return (data?.choices?.[0]?.message?.content || "").trim();
+}
+
+// ---- Transcription via chat/completions multimodal (AvalAI Gemini models) ----
+// Used when OPENAI_TRANSCRIBE_MODEL starts with "gemini" — AvalAI routes these
+// through their OpenAI-compatible chat endpoint with base64 audio content.
+async function transcribeViaChat(filePath, mime, language = "auto") {
+  if (!KEY) throw new AIError("Server has no OPENAI_API_KEY configured.");
+  const buf = await fs.promises.readFile(filePath);
+  const b64 = buf.toString("base64");
+
+  const langHint = (language && language !== "auto")
+    ? `The speaker is using ${language}. `
+    : "The audio may be in Persian/Farsi, English, or a mix. ";
+
+  const prompt = `${langHint}Transcribe the audio exactly as spoken. Output only the transcription text with no headings, labels, or commentary. Preserve the original language faithfully.`;
+
+  const res = await fetch(`${BASE}/chat/completions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${KEY}` },
+    body: JSON.stringify({
+      model: TRANSCRIBE_MODEL,
+      temperature: 0,
+      messages: [{
+        role: "user",
+        content: [
+          { type: "input_audio", input_audio: { data: b64, format: "mp3" } },
+          { type: "text", text: prompt },
+        ],
+      }],
+    }),
+  });
+  if (!res.ok) throw new AIError(`Transcription ${res.status}: ${(await res.text()).slice(0, 300)}`);
   const data = await res.json();
   return (data?.choices?.[0]?.message?.content || "").trim();
 }
@@ -103,9 +141,10 @@ const MP3_ARGS = ["-ar", "16000", "-ac", "1", "-b:a", "48k"];
 export async function transcribeLong(filePath, mime, language = "auto") {
   if (!KEY && !GEMINI_KEY) throw new AIError("No API key configured. Set OPENAI_API_KEY or GEMINI_API_KEY in .env.");
 
-  // Prefer Gemini when a key is available — much better quality for Persian / mixed-language audio.
-  const useGemini = !!GEMINI_KEY;
-  const transcribeFn = useGemini ? transcribeGemini : transcribe;
+  // Priority: AvalAI Gemini (chat multimodal) → Google Gemini (direct) → Whisper
+  const transcribeFn = TRANSCRIBE_VIA_CHAT
+    ? transcribeViaChat
+    : GEMINI_KEY ? transcribeGemini : transcribe;
 
   if (!(await ffmpegAvailable())) return transcribeFn(filePath, mime, language); // no ffmpeg → best effort
 
