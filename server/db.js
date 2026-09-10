@@ -64,6 +64,11 @@ CREATE TABLE IF NOT EXISTS chats (
 );
 `);
 
+// Migrate: add new user fields if absent (safe to re-run on existing DB)
+try { db.exec("ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1"); } catch {}
+try { db.exec("ALTER TABLE users ADD COLUMN max_sessions INTEGER"); } catch {}
+try { db.exec("ALTER TABLE users ADD COLUMN max_storage_mb INTEGER"); } catch {}
+
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
 
 // ---- Seed the admin account (credentials overridable via env) ----
@@ -92,7 +97,7 @@ export const Users = {
   byId: (id) => db.prepare("SELECT * FROM users WHERE id = ?").get(id),
   verify: (user, password) => bcrypt.compareSync(password, user.pass_hash),
   touchLogin: (id) => db.prepare("UPDATE users SET last_login=? WHERE id=?").run(Date.now(), id),
-  publicView: (u) => u && ({ id: u.id, email: u.email, name: u.name, role: u.role, createdAt: u.created_at, lastLogin: u.last_login }),
+  publicView: (u) => u && ({ id: u.id, email: u.email, name: u.name, role: u.role, isActive: u.is_active !== 0, createdAt: u.created_at, lastLogin: u.last_login }),
 };
 
 // ---- Workspaces ----
@@ -186,7 +191,7 @@ export const Chats = {
   },
 };
 
-// ---- Admin analytics ----
+// ---- Admin analytics + CRUD ----
 export const Admin = {
   stats() {
     const users = db.prepare("SELECT COUNT(*) c FROM users WHERE role!='admin'").get().c;
@@ -197,13 +202,18 @@ export const Admin = {
   },
   users() {
     return db.prepare(`
-      SELECT u.id,u.email,u.name,u.role,u.created_at,u.last_login,
+      SELECT u.id, u.email, u.name, u.role, u.is_active, u.max_sessions, u.max_storage_mb,
+        u.created_at, u.last_login,
         (SELECT COUNT(*) FROM sessions s WHERE s.user_id=u.id) AS sessions,
         (SELECT COUNT(*) FROM workspaces w WHERE w.user_id=u.id) AS workspaces
       FROM users u ORDER BY u.created_at DESC
     `).all().map((u) => ({
       id: u.id, email: u.email, name: u.name, role: u.role,
-      createdAt: u.created_at, lastLogin: u.last_login, sessions: u.sessions, workspaces: u.workspaces,
+      isActive: u.is_active !== 0,
+      maxSessions: u.max_sessions ?? null,
+      maxStorageMb: u.max_storage_mb ?? null,
+      createdAt: u.created_at, lastLogin: u.last_login,
+      sessions: u.sessions, workspaces: u.workspaces,
     }));
   },
   userDetail(id) {
@@ -211,6 +221,29 @@ export const Admin = {
     const sessions = db.prepare("SELECT id,title,workspace_id,status,duration,created_at FROM sessions WHERE user_id=? ORDER BY created_at DESC").all(id)
       .map((s) => ({ id: s.id, title: s.title, status: s.status, duration: s.duration, date: s.created_at }));
     return { user: Users.publicView(u), sessions };
+  },
+  createUser({ name, email, password, role = "user", maxSessions, maxStorageMb }) {
+    if (Users.byEmail(email)) throw new Error("An account with this email already exists.");
+    const id = uid();
+    db.prepare("INSERT INTO users (id,email,name,pass_hash,role,is_active,max_sessions,max_storage_mb,created_at) VALUES (?,?,?,?,?,1,?,?,?)")
+      .run(id, email, name, bcrypt.hashSync(password, 10), role, maxSessions ?? null, maxStorageMb ?? null, Date.now());
+    return Admin.userDetail(id);
+  },
+  updateUser(id, patch) {
+    if (!Users.byId(id)) return null;
+    const sets = []; const vals = { id };
+    if ("name" in patch) { sets.push("name=@name"); vals.name = patch.name; }
+    if ("email" in patch) { sets.push("email=@email"); vals.email = patch.email; }
+    if ("role" in patch) { sets.push("role=@role"); vals.role = patch.role; }
+    if ("isActive" in patch) { sets.push("is_active=@is_active"); vals.is_active = patch.isActive ? 1 : 0; }
+    if ("maxSessions" in patch) { sets.push("max_sessions=@max_sessions"); vals.max_sessions = patch.maxSessions ?? null; }
+    if ("maxStorageMb" in patch) { sets.push("max_storage_mb=@max_storage_mb"); vals.max_storage_mb = patch.maxStorageMb ?? null; }
+    if (patch.password) { sets.push("pass_hash=@pass_hash"); vals.pass_hash = bcrypt.hashSync(patch.password, 10); }
+    if (sets.length) db.prepare(`UPDATE users SET ${sets.join(",")} WHERE id=@id`).run(vals);
+    return Admin.userDetail(id);
+  },
+  deleteUser(id) {
+    return db.prepare("DELETE FROM users WHERE id=?").run(id).changes > 0;
   },
 };
 

@@ -58,6 +58,7 @@ app.post("/api/auth/login", wrap((req, res) => {
   email = (email || "").trim().toLowerCase();
   const user = Users.byEmail(email);
   if (!user || !Users.verify(user, password || "")) return res.status(401).json({ error: "Wrong email or password." });
+  if (user.is_active === 0) return res.status(403).json({ error: "This account has been suspended. Contact your administrator." });
   Workspaces.ensureDefault(user.id);
   Users.touchLogin(user.id);
   issueCookie(res, user);
@@ -97,6 +98,10 @@ app.delete("/api/workspaces/:id", requireAuth, wrap((req, res) => {
 app.post("/api/sessions", requireAuth, upload.single("audio"), wrap((req, res) => {
   const { workspace, title, prompt } = req.body || {};
   if (!workspace || !Workspaces.byId(req.user.id, workspace)) return res.status(400).json({ error: "Unknown workspace." });
+  if (req.user.max_sessions != null) {
+    const count = db.prepare("SELECT COUNT(*) c FROM sessions WHERE user_id=?").get(req.user.id).c;
+    if (count >= req.user.max_sessions) return res.status(403).json({ error: `Session limit reached (max ${req.user.max_sessions} sessions allowed on this account).` });
+  }
   const session = Sessions.create(req.user.id, {
     workspace, title: title || "New recording",
     audioFile: req.file ? req.file.filename : null,
@@ -215,6 +220,41 @@ app.get("/api/admin/users/:id", requireAuth, requireAdmin, wrap((req, res) => {
   const detail = Admin.userDetail(req.params.id);
   if (!detail) return res.status(404).json({ error: "User not found." });
   res.json(detail);
+}));
+
+app.post("/api/admin/users", requireAuth, requireAdmin, wrap((req, res) => {
+  let { name, email, password, role, maxSessions, maxStorageMb } = req.body || {};
+  name = (name || "").trim(); email = (email || "").trim().toLowerCase();
+  if (!name || !email || !password) return res.status(400).json({ error: "Name, email and password are required." });
+  if (String(password).length < 6) return res.status(400).json({ error: "Password must be at least 6 characters." });
+  if (!["user", "admin"].includes(role)) role = "user";
+  const ms = maxSessions != null && maxSessions !== "" ? Number(maxSessions) : null;
+  const mb = maxStorageMb != null && maxStorageMb !== "" ? Number(maxStorageMb) : null;
+  const detail = Admin.createUser({ name, email, password, role, maxSessions: ms, maxStorageMb: mb });
+  Workspaces.ensureDefault(detail.user.id);
+  res.json(detail);
+}));
+
+app.patch("/api/admin/users/:id", requireAuth, requireAdmin, wrap((req, res) => {
+  const patch = {};
+  const b = req.body || {};
+  if ("name" in b && (b.name || "").trim()) patch.name = b.name.trim();
+  if ("email" in b && (b.email || "").trim()) patch.email = b.email.trim().toLowerCase();
+  if ("role" in b && ["user", "admin"].includes(b.role)) patch.role = b.role;
+  if ("isActive" in b) patch.isActive = !!b.isActive;
+  if ("maxSessions" in b) patch.maxSessions = b.maxSessions !== "" && b.maxSessions != null ? Number(b.maxSessions) : null;
+  if ("maxStorageMb" in b) patch.maxStorageMb = b.maxStorageMb !== "" && b.maxStorageMb != null ? Number(b.maxStorageMb) : null;
+  if ("password" in b && b.password && String(b.password).length >= 6) patch.password = b.password;
+  const detail = Admin.updateUser(req.params.id, patch);
+  if (!detail) return res.status(404).json({ error: "User not found." });
+  res.json(detail);
+}));
+
+app.delete("/api/admin/users/:id", requireAuth, requireAdmin, wrap((req, res) => {
+  if (req.params.id === req.user.id) return res.status(400).json({ error: "You cannot delete your own account." });
+  const ok = Admin.deleteUser(req.params.id);
+  if (!ok) return res.status(404).json({ error: "User not found." });
+  res.json({ ok: true });
 }));
 
 // ================= STATIC + SPA =================
