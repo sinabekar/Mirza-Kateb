@@ -102,6 +102,13 @@ app.post("/api/sessions", requireAuth, upload.single("audio"), wrap((req, res) =
     const count = db.prepare("SELECT COUNT(*) c FROM sessions WHERE user_id=?").get(req.user.id).c;
     if (count >= req.user.max_sessions) return res.status(403).json({ error: `Session limit reached (max ${req.user.max_sessions} sessions allowed on this account).` });
   }
+  if (req.user.max_minutes != null) {
+    const totalSecs = db.prepare("SELECT COALESCE(SUM(duration),0) t FROM sessions WHERE user_id=?").get(req.user.id).t;
+    const newSecs = Number(req.body?.duration) || 0;
+    if ((totalSecs + newSecs) > req.user.max_minutes * 60) {
+      return res.status(403).json({ error: `Recording time limit reached (max ${req.user.max_minutes} minutes total allowed on this account).` });
+    }
+  }
   const session = Sessions.create(req.user.id, {
     workspace, title: title || "New recording",
     audioFile: req.file ? req.file.filename : null,
@@ -223,14 +230,13 @@ app.get("/api/admin/users/:id", requireAuth, requireAdmin, wrap((req, res) => {
 }));
 
 app.post("/api/admin/users", requireAuth, requireAdmin, wrap((req, res) => {
-  let { name, email, password, role, maxSessions, maxStorageMb } = req.body || {};
+  let { name, email, password, role, maxSessions, maxStorageMb, maxMinutes } = req.body || {};
   name = (name || "").trim(); email = (email || "").trim().toLowerCase();
   if (!name || !email || !password) return res.status(400).json({ error: "Name, email and password are required." });
   if (String(password).length < 6) return res.status(400).json({ error: "Password must be at least 6 characters." });
   if (!["user", "admin"].includes(role)) role = "user";
-  const ms = maxSessions != null && maxSessions !== "" ? Number(maxSessions) : null;
-  const mb = maxStorageMb != null && maxStorageMb !== "" ? Number(maxStorageMb) : null;
-  const detail = Admin.createUser({ name, email, password, role, maxSessions: ms, maxStorageMb: mb });
+  const toNum = (v) => v != null && v !== "" ? Number(v) : null;
+  const detail = Admin.createUser({ name, email, password, role, maxSessions: toNum(maxSessions), maxStorageMb: toNum(maxStorageMb), maxMinutes: toNum(maxMinutes) });
   Workspaces.ensureDefault(detail.user.id);
   res.json(detail);
 }));
@@ -238,12 +244,14 @@ app.post("/api/admin/users", requireAuth, requireAdmin, wrap((req, res) => {
 app.patch("/api/admin/users/:id", requireAuth, requireAdmin, wrap((req, res) => {
   const patch = {};
   const b = req.body || {};
+  const toNum = (v) => v != null && v !== "" ? Number(v) : null;
   if ("name" in b && (b.name || "").trim()) patch.name = b.name.trim();
   if ("email" in b && (b.email || "").trim()) patch.email = b.email.trim().toLowerCase();
   if ("role" in b && ["user", "admin"].includes(b.role)) patch.role = b.role;
   if ("isActive" in b) patch.isActive = !!b.isActive;
-  if ("maxSessions" in b) patch.maxSessions = b.maxSessions !== "" && b.maxSessions != null ? Number(b.maxSessions) : null;
-  if ("maxStorageMb" in b) patch.maxStorageMb = b.maxStorageMb !== "" && b.maxStorageMb != null ? Number(b.maxStorageMb) : null;
+  if ("maxSessions" in b) patch.maxSessions = toNum(b.maxSessions);
+  if ("maxStorageMb" in b) patch.maxStorageMb = toNum(b.maxStorageMb);
+  if ("maxMinutes" in b) patch.maxMinutes = toNum(b.maxMinutes);
   if ("password" in b && b.password && String(b.password).length >= 6) patch.password = b.password;
   const detail = Admin.updateUser(req.params.id, patch);
   if (!detail) return res.status(404).json({ error: "User not found." });

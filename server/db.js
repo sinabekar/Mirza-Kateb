@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS chats (
 try { db.exec("ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1"); } catch {}
 try { db.exec("ALTER TABLE users ADD COLUMN max_sessions INTEGER"); } catch {}
 try { db.exec("ALTER TABLE users ADD COLUMN max_storage_mb INTEGER"); } catch {}
+try { db.exec("ALTER TABLE users ADD COLUMN max_minutes INTEGER"); } catch {}
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
 
@@ -202,16 +203,19 @@ export const Admin = {
   },
   users() {
     return db.prepare(`
-      SELECT u.id, u.email, u.name, u.role, u.is_active, u.max_sessions, u.max_storage_mb,
+      SELECT u.id, u.email, u.name, u.role, u.is_active, u.max_sessions, u.max_storage_mb, u.max_minutes,
         u.created_at, u.last_login,
         (SELECT COUNT(*) FROM sessions s WHERE s.user_id=u.id) AS sessions,
-        (SELECT COUNT(*) FROM workspaces w WHERE w.user_id=u.id) AS workspaces
+        (SELECT COUNT(*) FROM workspaces w WHERE w.user_id=u.id) AS workspaces,
+        (SELECT COALESCE(SUM(s2.duration),0) FROM sessions s2 WHERE s2.user_id=u.id) AS total_secs
       FROM users u ORDER BY u.created_at DESC
     `).all().map((u) => ({
       id: u.id, email: u.email, name: u.name, role: u.role,
       isActive: u.is_active !== 0,
       maxSessions: u.max_sessions ?? null,
       maxStorageMb: u.max_storage_mb ?? null,
+      maxMinutes: u.max_minutes ?? null,
+      totalMinutes: Math.round((u.total_secs || 0) / 60),
       createdAt: u.created_at, lastLogin: u.last_login,
       sessions: u.sessions, workspaces: u.workspaces,
     }));
@@ -222,11 +226,11 @@ export const Admin = {
       .map((s) => ({ id: s.id, title: s.title, status: s.status, duration: s.duration, date: s.created_at }));
     return { user: Users.publicView(u), sessions };
   },
-  createUser({ name, email, password, role = "user", maxSessions, maxStorageMb }) {
+  createUser({ name, email, password, role = "user", maxSessions, maxStorageMb, maxMinutes }) {
     if (Users.byEmail(email)) throw new Error("An account with this email already exists.");
     const id = uid();
-    db.prepare("INSERT INTO users (id,email,name,pass_hash,role,is_active,max_sessions,max_storage_mb,created_at) VALUES (?,?,?,?,?,1,?,?,?)")
-      .run(id, email, name, bcrypt.hashSync(password, 10), role, maxSessions ?? null, maxStorageMb ?? null, Date.now());
+    db.prepare("INSERT INTO users (id,email,name,pass_hash,role,is_active,max_sessions,max_storage_mb,max_minutes,created_at) VALUES (?,?,?,?,?,1,?,?,?,?)")
+      .run(id, email, name, bcrypt.hashSync(password, 10), role, maxSessions ?? null, maxStorageMb ?? null, maxMinutes ?? null, Date.now());
     return Admin.userDetail(id);
   },
   updateUser(id, patch) {
@@ -238,6 +242,7 @@ export const Admin = {
     if ("isActive" in patch) { sets.push("is_active=@is_active"); vals.is_active = patch.isActive ? 1 : 0; }
     if ("maxSessions" in patch) { sets.push("max_sessions=@max_sessions"); vals.max_sessions = patch.maxSessions ?? null; }
     if ("maxStorageMb" in patch) { sets.push("max_storage_mb=@max_storage_mb"); vals.max_storage_mb = patch.maxStorageMb ?? null; }
+    if ("maxMinutes" in patch) { sets.push("max_minutes=@max_minutes"); vals.max_minutes = patch.maxMinutes ?? null; }
     if (patch.password) { sets.push("pass_hash=@pass_hash"); vals.pass_hash = bcrypt.hashSync(patch.password, 10); }
     if (sets.length) db.prepare(`UPDATE users SET ${sets.join(",")} WHERE id=@id`).run(vals);
     return Admin.userDetail(id);
