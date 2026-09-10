@@ -146,6 +146,22 @@ async function audioDuration(filePath) {
   } catch { return 0; }
 }
 
+// ---- Post-transcription cleanup ----
+// Fixes ASR errors and makes text more readable without changing meaning or language.
+export async function cleanTranscript(raw) {
+  if (!KEY || !raw?.trim()) return raw;
+  try {
+    return await chat(
+      `You are a transcript corrector. Fix transcription errors, garbled words, run-on sentences, and punctuation in the text below. Rules:
+- Do NOT change meaning, facts, names, or language (Persian stays Persian, English stays English).
+- Do NOT add, remove, or summarize content.
+- Fix only obvious ASR mistakes (wrong words, missing spaces, bad punctuation).
+- Return only the corrected transcript text, nothing else.`,
+      raw
+    );
+  } catch { return raw; } // if AI fails, return original
+}
+
 // ---- Task on a transcript ----
 export async function runTask({ transcript, prompt, taskKey }) {
   const key = taskKey || inferTask(prompt);
