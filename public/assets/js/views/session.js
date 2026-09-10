@@ -183,8 +183,8 @@ export function sessionView(id) {
     const commit = () => store.setActionItems(id, items);
     items.forEach((it, idx) => {
       const tr = el(`<tr>
-        <td><input value="${esc(it.task)}" data-k="task" /></td>
-        <td><input value="${esc(it.owner || "")}" placeholder="—" data-k="owner" style="max-width:120px" /></td>
+        <td><input value="${esc(it.task)}" data-k="task" dir="auto" /></td>
+        <td><input value="${esc(it.owner || "")}" placeholder="—" data-k="owner" dir="auto" style="max-width:120px" /></td>
         <td><input value="${esc(it.deadline || "")}" placeholder="—" data-k="deadline" style="max-width:120px" /></td>
         <td><select data-k="priority">${["high", "medium", "low"].map((p) => `<option ${it.priority === p ? "selected" : ""}>${p}</option>`).join("")}</select></td>
         <td><select data-k="status">${["open", "in-progress", "done"].map((p) => `<option ${it.status === p ? "selected" : ""}>${p}</option>`).join("")}</select></td>

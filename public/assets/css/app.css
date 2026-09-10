@@ -282,6 +282,8 @@ textarea { resize: vertical; line-height: 1.6; }
 .ai-table th { text-align: left; font-size: 0.72rem; letter-spacing: 1px; text-transform: uppercase; color: var(--text-faint); padding: 0.6rem 0.7rem; border-bottom: 1px solid var(--border); font-weight: 500; }
 .ai-table td { padding: 0.55rem 0.7rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
 .ai-table input, .ai-table select { padding: 0.4rem 0.5rem; font-size: 0.9rem; }
+/* Auto-detect RTL for Persian/Arabic task text */
+.ai-table input[dir="auto"] { text-align: start; unicode-bidi: plaintext; }
 .pill { font-size: 0.74rem; padding: 0.15rem 0.6rem; border-radius: 999px; }
 .pill.high { background: rgba(166,84,63,0.14); color: #a6543f; }
 .pill.medium { background: rgba(184,156,90,0.16); color: #8a7333; }

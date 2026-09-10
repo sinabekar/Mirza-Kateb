@@ -79,7 +79,7 @@ export function toast(msg) {
 }
 
 /* ---- Modal ---- */
-export function modal({ title, body, confirmText = "Confirm", cancelText = "Cancel", danger = false, onConfirm }) {
+export function modal({ title, body, confirmText = "Confirm", cancelText = "Cancel", danger = false, onConfirm, onCancel }) {
   const back = el(`<div class="modal-backdrop"><div class="modal" role="dialog" aria-modal="true">
     <h2>${esc(title)}</h2><div class="modal-body">${body}</div>
     <div class="modal-actions">
@@ -87,8 +87,8 @@ export function modal({ title, body, confirmText = "Confirm", cancelText = "Canc
       <button class="btn ${danger ? "btn-danger btn-primary" : "btn-primary"}" data-ok>${esc(confirmText)}</button>
     </div></div></div>`);
   const close = () => back.remove();
-  back.addEventListener("click", (e) => { if (e.target === back) close(); });
-  back.querySelector("[data-x]").onclick = close;
+  back.addEventListener("click", (e) => { if (e.target === back) { onCancel?.(); close(); } });
+  back.querySelector("[data-x]").onclick = () => { onCancel?.(); close(); };
   back.querySelector("[data-ok]").onclick = () => { const keep = onConfirm?.(back); if (!keep) close(); };
   document.body.appendChild(back);
   back.querySelector("input,textarea")?.focus();
