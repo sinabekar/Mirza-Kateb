@@ -261,6 +261,8 @@ textarea { resize: vertical; line-height: 1.6; }
 .output-doc h1,.output-doc h2,.output-doc h3 { margin: 1.2em 0 0.5em; }
 .output-doc h1:first-child,.output-doc h2:first-child { margin-top: 0; }
 .output-doc ul,.output-doc ol { padding-left: 1.3rem; }
+.output-doc[dir="auto"]:is([dir="rtl"]) ul,
+.output-doc[dir="auto"]:is([dir="rtl"]) ol { padding-left: 0; padding-right: 1.3rem; }
 .output-doc li { margin: 0.3em 0; }
 .output-doc code { background: rgba(85,96,82,0.09); padding: 0.1rem 0.35rem; border-radius: 5px; font-size: 0.9em; }
 .output-doc blockquote { border-left: 3px solid var(--gold); margin: 1em 0; padding-left: 1rem; color: var(--text-soft); font-style: italic; }

@@ -142,7 +142,7 @@ export function sessionView(id) {
           <button class="btn btn-sm btn-primary" id="dlBtn">${icon("download")} Export</button>
         </div>
       </div>
-      <div class="output-doc" id="doc">${md(ver.content)}</div>
+      <div class="output-doc" id="doc" dir="auto">${md(ver.content)}</div>
       ${out.versions.length > 1 ? `<div class="mt2"><div class="eyebrow">${icon("history", "ico")} Version history</div>
         <div class="version-list mt" id="versions">
           ${out.versions.map((v, i) => `<div class="version-item ${i === activeVersionIdx ? "current" : ""}" data-v="${i}">
@@ -205,7 +205,7 @@ export function sessionView(id) {
       <button class="btn btn-sm" id="copyT">${icon("copy")} Copy transcript</button>
       <span class="muted" style="font-size:.82rem;margin-left:auto">${(s2.transcript || "").split(/\s+/).filter(Boolean).length} words</span>
     </div>
-    <div class="output-doc"><p style="white-space:pre-wrap;line-height:1.8">${esc(s2.transcript || "No transcript.")}</p></div>`;
+    <div class="output-doc" dir="auto"><p style="white-space:pre-wrap;line-height:1.8">${esc(s2.transcript || "No transcript.")}</p></div>`;
     panel.querySelector("#copyT").onclick = () => copyText(s2.transcript || "");
   }
 
