@@ -6,13 +6,13 @@
 import { store } from "../store.js";
 import { aiService, TASKS } from "../ai.js";
 import { Recorder, renderWaveform, drawPlaceholderWave, fmtClock } from "../audio.js";
-import { el, icon, esc, toast } from "../ui.js";
+import { el, icon, esc, toast, modal } from "../ui.js";
 import { go } from "../app.js";
 
 const ACCEPT = ".mp3,.wav,.m4a,audio/mpeg,audio/wav,audio/x-m4a,audio/mp4,audio/webm";
 
 export function recordView() {
-  const captured = { blob: null, url: null, name: "", duration: 0 };
+  const captured = { blob: null, url: null, name: "", title: "", duration: 0 };
   let recorder = null;
 
   const root = el(`<div>
@@ -97,8 +97,27 @@ export function recordView() {
     recorder = null;
     if (!res) return;
     captured.blob = res.blob; captured.url = res.url; captured.duration = res.duration;
+    const defaultTitle = new Date().toLocaleString("fa-IR", { dateStyle: "short", timeStyle: "short" });
     captured.name = `recording-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}.webm`;
-    showCaptured();
+    captured.title = defaultTitle;
+    askSessionTitle(defaultTitle, showCaptured);
+  }
+
+  function askSessionTitle(defaultTitle, onDone) {
+    modal({
+      title: "نام جلسه را وارد کنید",
+      body: `<input id="sessionTitleInput" type="text" dir="auto" placeholder="${esc(defaultTitle)}" style="font-size:1rem" />`,
+      confirmText: "تأیید",
+      cancelText: "رد کردن",
+      onConfirm: (root) => {
+        const v = root.querySelector("#sessionTitleInput").value.trim();
+        if (v) captured.title = v;
+        onDone();
+      },
+      onCancel: () => onDone(),
+    });
+    // focus the input when modal opens
+    requestAnimationFrame(() => document.querySelector("#sessionTitleInput")?.focus());
   }
 
   // ---- Upload ----
@@ -113,6 +132,7 @@ export function recordView() {
   async function handleFile(file) {
     if (!/\.(mp3|wav|m4a)$/i.test(file.name) && !file.type.startsWith("audio")) { toast("Please choose an MP3, WAV or M4A file"); return; }
     captured.blob = file; captured.url = URL.createObjectURL(file); captured.name = file.name;
+    captured.title = file.name.replace(/\.[a-z0-9]+$/i, "");
     // best-effort duration
     try {
       const a = new Audio(captured.url);
@@ -197,7 +217,7 @@ export function recordView() {
       setStep("Uploading your recording…", "Your audio is saved before transcription, so nothing is lost.");
       const form = new FormData();
       form.append("workspace", store.get().activeWorkspace);
-      form.append("title", captured.name.replace(/\.[a-z0-9]+$/i, "") || "New recording");
+      form.append("title", captured.title || captured.name.replace(/\.[a-z0-9]+$/i, "") || "New recording");
       form.append("duration", String(captured.duration || 0));
       form.append("prompt", prompt || label);
       form.append("audio", captured.blob, captured.name);

@@ -5,6 +5,9 @@
    ============================================================ */
 
 import { store } from "../store.js";
+
+// Returns "rtl" if text contains significant Persian/Arabic content.
+const textDir = (t = "") => /[؀-ۿ]{4,}/.test(t) ? "rtl" : "ltr";
 import { aiService, TASKS } from "../ai.js";
 import { renderWaveform, drawPlaceholderWave, fmtDuration } from "../audio.js";
 import { el, icon, esc, md, relDate, copyText, exportDoc, toast, modal } from "../ui.js";
@@ -142,7 +145,7 @@ export function sessionView(id) {
           <button class="btn btn-sm btn-primary" id="dlBtn">${icon("download")} Export</button>
         </div>
       </div>
-      <div class="output-doc" id="doc">${md(ver.content)}</div>
+      <div class="output-doc" id="doc" dir="${textDir(ver.content)}">${md(ver.content)}</div>
       ${out.versions.length > 1 ? `<div class="mt2"><div class="eyebrow">${icon("history", "ico")} Version history</div>
         <div class="version-list mt" id="versions">
           ${out.versions.map((v, i) => `<div class="version-item ${i === activeVersionIdx ? "current" : ""}" data-v="${i}">
@@ -183,8 +186,8 @@ export function sessionView(id) {
     const commit = () => store.setActionItems(id, items);
     items.forEach((it, idx) => {
       const tr = el(`<tr>
-        <td><input value="${esc(it.task)}" data-k="task" /></td>
-        <td><input value="${esc(it.owner || "")}" placeholder="—" data-k="owner" style="max-width:120px" /></td>
+        <td><input value="${esc(it.task)}" data-k="task" dir="auto" /></td>
+        <td><input value="${esc(it.owner || "")}" placeholder="—" data-k="owner" dir="auto" style="max-width:120px" /></td>
         <td><input value="${esc(it.deadline || "")}" placeholder="—" data-k="deadline" style="max-width:120px" /></td>
         <td><select data-k="priority">${["high", "medium", "low"].map((p) => `<option ${it.priority === p ? "selected" : ""}>${p}</option>`).join("")}</select></td>
         <td><select data-k="status">${["open", "in-progress", "done"].map((p) => `<option ${it.status === p ? "selected" : ""}>${p}</option>`).join("")}</select></td>
@@ -201,12 +204,38 @@ export function sessionView(id) {
   // ========== TRANSCRIPT ==========
   function renderTranscript() {
     const s2 = store.session(id);
+    const tx = s2.transcript || "";
+    const wordCount = tx.split(/\s+/).filter(Boolean).length;
+    const isDiarized = /^\[Speaker \d+\]:/m.test(tx);
     panel.innerHTML = `<div class="toolbar">
       <button class="btn btn-sm" id="copyT">${icon("copy")} Copy transcript</button>
-      <span class="muted" style="font-size:.82rem;margin-left:auto">${(s2.transcript || "").split(/\s+/).filter(Boolean).length} words</span>
+      ${isDiarized ? `<span class="pill low" style="font-size:.75rem">Speaker labels</span>` : ""}
+      <span class="muted" style="font-size:.82rem;margin-left:auto">${wordCount} words</span>
     </div>
-    <div class="output-doc"><p style="white-space:pre-wrap;line-height:1.8">${esc(s2.transcript || "No transcript.")}</p></div>`;
-    panel.querySelector("#copyT").onclick = () => copyText(s2.transcript || "");
+    <div class="output-doc" id="txBody" dir="${textDir(tx)}"></div>`;
+    panel.querySelector("#copyT").onclick = () => copyText(tx);
+    const txBody = panel.querySelector("#txBody");
+    if (isDiarized) renderDiarizedTranscript(txBody, tx);
+    else txBody.innerHTML = `<p style="white-space:pre-wrap;line-height:1.8">${esc(tx || "No transcript.")}</p>`;
+  }
+
+  function renderDiarizedTranscript(container, text) {
+    const SPEAKER_COLORS = ["var(--olive)", "var(--gold)", "#7b6fa0", "#5b8c5a", "#8c5a5a"];
+    const speakerMap = {};
+    let colorIdx = 0;
+    const lines = text.split("\n");
+    let html = "";
+    for (const line of lines) {
+      const m = line.match(/^\[(.+?)\]:\s*(.*)/);
+      if (m) {
+        const speaker = m[1];
+        if (!speakerMap[speaker]) speakerMap[speaker] = SPEAKER_COLORS[colorIdx++ % SPEAKER_COLORS.length];
+        html += `<div class="speaker-turn"><span class="speaker-label" style="color:${speakerMap[speaker]}">${esc(speaker)}</span><span class="speaker-text" dir="auto">${esc(m[2])}</span></div>`;
+      } else if (line.trim()) {
+        html += `<p style="white-space:pre-wrap;margin:.2rem 0">${esc(line)}</p>`;
+      }
+    }
+    container.innerHTML = html;
   }
 
   renderOutputs();

@@ -261,6 +261,8 @@ textarea { resize: vertical; line-height: 1.6; }
 .output-doc h1,.output-doc h2,.output-doc h3 { margin: 1.2em 0 0.5em; }
 .output-doc h1:first-child,.output-doc h2:first-child { margin-top: 0; }
 .output-doc ul,.output-doc ol { padding-left: 1.3rem; }
+.output-doc[dir="auto"]:is([dir="rtl"]) ul,
+.output-doc[dir="auto"]:is([dir="rtl"]) ol { padding-left: 0; padding-right: 1.3rem; }
 .output-doc li { margin: 0.3em 0; }
 .output-doc code { background: rgba(85,96,82,0.09); padding: 0.1rem 0.35rem; border-radius: 5px; font-size: 0.9em; }
 .output-doc blockquote { border-left: 3px solid var(--gold); margin: 1em 0; padding-left: 1rem; color: var(--text-soft); font-style: italic; }
@@ -282,6 +284,17 @@ textarea { resize: vertical; line-height: 1.6; }
 .ai-table th { text-align: left; font-size: 0.72rem; letter-spacing: 1px; text-transform: uppercase; color: var(--text-faint); padding: 0.6rem 0.7rem; border-bottom: 1px solid var(--border); font-weight: 500; }
 .ai-table td { padding: 0.55rem 0.7rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
 .ai-table input, .ai-table select { padding: 0.4rem 0.5rem; font-size: 0.9rem; }
+.user-row:hover { background: var(--surface); }
+.user-row:hover td:first-child { color: var(--olive); }
+.user-detail-panel .field label { font-size: 0.8rem; }
+.user-detail-panel .eyebrow { font-size: 0.72rem; margin-bottom: 0.5rem; }
+/* Speaker diarization transcript */
+.speaker-turn { display: flex; gap: 0.7rem; align-items: baseline; padding: 0.3rem 0; border-bottom: 1px solid var(--border); line-height: 1.7; }
+.speaker-turn:last-child { border-bottom: none; }
+.speaker-label { font-size: 0.76rem; font-weight: 600; white-space: nowrap; min-width: 80px; flex-shrink: 0; letter-spacing: 0.2px; }
+.speaker-text { flex: 1; }
+/* Auto-detect RTL for Persian/Arabic task text */
+.ai-table input[dir="auto"] { text-align: start; unicode-bidi: plaintext; }
 .pill { font-size: 0.74rem; padding: 0.15rem 0.6rem; border-radius: 999px; }
 .pill.high { background: rgba(166,84,63,0.14); color: #a6543f; }
 .pill.medium { background: rgba(184,156,90,0.16); color: #8a7333; }

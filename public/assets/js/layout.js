@@ -11,14 +11,18 @@ export function shell(route, contentEl, { title, sub, topRight } = {}) {
   const s = store.get();
   const ws = store.workspace(s.activeWorkspace);
 
-  const nav = [
-    { r: "dashboard", label: "Dashboard", ic: "home" },
-    { r: "new", label: "New Recording", ic: "mic" },
-    { r: "chat", label: "Ask Memory", ic: "chat" },
-    { r: "search", label: "Search", ic: "search" },
-    { r: "actions", label: "Action Items", ic: "check" },
-  ];
-  if (store.isAdmin()) nav.push({ r: "admin", label: "Admin Panel", ic: "gear" });
+  const isAdmin = store.isAdmin();
+  const nav = isAdmin
+    ? [
+        { r: "admin", label: "Admin Panel", ic: "gear" },
+      ]
+    : [
+        { r: "dashboard", label: "Dashboard", ic: "home" },
+        { r: "new",       label: "New Recording", ic: "mic" },
+        { r: "chat",      label: "Ask Memory", ic: "chat" },
+        { r: "search",    label: "Search", ic: "search" },
+        { r: "actions",   label: "Action Items", ic: "check" },
+      ];
 
   const navItem = (n) => `<a class="nav-item ${route === n.r ? "active" : ""}" href="#/${n.r === "dashboard" ? "" : n.r}">${icon(n.ic)}<span>${n.label}</span></a>`;
 

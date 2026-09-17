@@ -11,7 +11,7 @@ import multer from "multer";
 
 import db, { seedAdmin, Users, Workspaces, Sessions, Chats, Admin, UPLOAD_DIR } from "./db.js";
 import { attachUser, requireAuth, requireAdmin, issueCookie, clearCookie, isValidEmail } from "./auth.js";
-import { transcribeLong, runTask, extractActions, askMemory, aiConfigured, TASKS, inferTask } from "./ai.js";
+import { transcribeLong, runTask, extractActions, askMemory, normalizeTranscript, aiConfigured, TASKS, inferTask } from "./ai.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, "..", "public");
@@ -58,6 +58,7 @@ app.post("/api/auth/login", wrap((req, res) => {
   email = (email || "").trim().toLowerCase();
   const user = Users.byEmail(email);
   if (!user || !Users.verify(user, password || "")) return res.status(401).json({ error: "Wrong email or password." });
+  if (user.is_active === 0) return res.status(403).json({ error: "This account has been suspended. Contact your administrator." });
   Workspaces.ensureDefault(user.id);
   Users.touchLogin(user.id);
   issueCookie(res, user);
@@ -97,6 +98,17 @@ app.delete("/api/workspaces/:id", requireAuth, wrap((req, res) => {
 app.post("/api/sessions", requireAuth, upload.single("audio"), wrap((req, res) => {
   const { workspace, title, prompt } = req.body || {};
   if (!workspace || !Workspaces.byId(req.user.id, workspace)) return res.status(400).json({ error: "Unknown workspace." });
+  if (req.user.max_sessions != null) {
+    const count = db.prepare("SELECT COUNT(*) c FROM sessions WHERE user_id=?").get(req.user.id).c;
+    if (count >= req.user.max_sessions) return res.status(403).json({ error: `Session limit reached (max ${req.user.max_sessions} sessions allowed on this account).` });
+  }
+  if (req.user.max_minutes != null) {
+    const totalSecs = db.prepare("SELECT COALESCE(SUM(duration),0) t FROM sessions WHERE user_id=?").get(req.user.id).t;
+    const newSecs = Number(req.body?.duration) || 0;
+    if ((totalSecs + newSecs) > req.user.max_minutes * 60) {
+      return res.status(403).json({ error: `Recording time limit reached (max ${req.user.max_minutes} minutes total allowed on this account).` });
+    }
+  }
   const session = Sessions.create(req.user.id, {
     workspace, title: title || "New recording",
     audioFile: req.file ? req.file.filename : null,
@@ -119,21 +131,28 @@ app.post("/api/sessions/:id/process", requireAuth, wrap(async (req, res) => {
   Sessions.update(req.user.id, raw.id, { status: "processing" });
 
   try {
-    const transcript = (await transcribeLong(audioPath, raw.audio_mime, language) || "").trim();
-    console.log(`[process] session ${raw.id}: transcript ${transcript.length} chars (${raw.audio_mime})`);
-    if (transcript.length < 3) {
+    const tokenAccum = [];
+    const rawTranscript = (await transcribeLong(audioPath, raw.audio_mime, language, tokenAccum) || "").trim();
+    console.log(`[process] session ${raw.id}: transcript ${rawTranscript.length} chars (${raw.audio_mime})`);
+    if (rawTranscript.length < 3) {
       throw new Error("No speech was detected. The recording may be silent or an unsupported format — make sure you spoke (and, for meetings, that 'Share tab audio' was on), or upload an MP3/WAV.");
     }
+    const transcript = normalizeTranscript(rawTranscript);
 
     const key = taskKey || inferTask(prompt);
     const label = TASKS.find((t) => t.key === key)?.label || "Convert to text";
-    const content = await runTask({ transcript, prompt, taskKey: key });
+    const content = await runTask({ transcript, prompt, taskKey: key, accum: tokenAccum });
     const output = { id: Sessions.uid(), type: label, created: Date.now(), versions: [{ id: Sessions.uid(), created: Date.now(), content }] };
-    const actionItems = wantActions ? await extractActions(transcript) : [];
+    const actionItems = wantActions ? await extractActions(transcript, tokenAccum) : [];
+
+    const totalIn  = tokenAccum.reduce((s, x) => s + (x.in  || 0), 0);
+    const totalOut = tokenAccum.reduce((s, x) => s + (x.out || 0), 0);
+    console.log(`[process] session ${raw.id}: tokens in=${totalIn} out=${totalOut}`);
 
     const session = Sessions.update(req.user.id, raw.id, {
       transcript, prompt: prompt || label, status: "ready",
       title: deriveTitle(content, raw.title), outputs: [output], actionItems,
+      inputTokens: totalIn, outputTokens: totalOut,
     });
     res.json({ session });
   } catch (e) {
@@ -215,6 +234,44 @@ app.get("/api/admin/users/:id", requireAuth, requireAdmin, wrap((req, res) => {
   if (!detail) return res.status(404).json({ error: "User not found." });
   res.json(detail);
 }));
+
+app.post("/api/admin/users", requireAuth, requireAdmin, wrap((req, res) => {
+  let { name, email, password, role, maxSessions, maxStorageMb, maxMinutes } = req.body || {};
+  name = (name || "").trim(); email = (email || "").trim().toLowerCase();
+  if (!name || !email || !password) return res.status(400).json({ error: "Name, email and password are required." });
+  if (String(password).length < 6) return res.status(400).json({ error: "Password must be at least 6 characters." });
+  if (!["user", "admin"].includes(role)) role = "user";
+  const toNum = (v) => v != null && v !== "" ? Number(v) : null;
+  const detail = Admin.createUser({ name, email, password, role, maxSessions: toNum(maxSessions), maxStorageMb: toNum(maxStorageMb), maxMinutes: toNum(maxMinutes) });
+  Workspaces.ensureDefault(detail.user.id);
+  res.json(detail);
+}));
+
+app.patch("/api/admin/users/:id", requireAuth, requireAdmin, wrap((req, res) => {
+  const patch = {};
+  const b = req.body || {};
+  const toNum = (v) => v != null && v !== "" ? Number(v) : null;
+  if ("name" in b && (b.name || "").trim()) patch.name = b.name.trim();
+  if ("email" in b && (b.email || "").trim()) patch.email = b.email.trim().toLowerCase();
+  if ("role" in b && ["user", "admin"].includes(b.role)) patch.role = b.role;
+  if ("isActive" in b) patch.isActive = !!b.isActive;
+  if ("maxSessions" in b) patch.maxSessions = toNum(b.maxSessions);
+  if ("maxStorageMb" in b) patch.maxStorageMb = toNum(b.maxStorageMb);
+  if ("maxMinutes" in b) patch.maxMinutes = toNum(b.maxMinutes);
+  if ("password" in b && b.password && String(b.password).length >= 6) patch.password = b.password;
+  const detail = Admin.updateUser(req.params.id, patch);
+  if (!detail) return res.status(404).json({ error: "User not found." });
+  res.json(detail);
+}));
+
+app.delete("/api/admin/users/:id", requireAuth, requireAdmin, wrap((req, res) => {
+  if (req.params.id === req.user.id) return res.status(400).json({ error: "You cannot delete your own account." });
+  const ok = Admin.deleteUser(req.params.id);
+  if (!ok) return res.status(404).json({ error: "User not found." });
+  res.json({ ok: true });
+}));
+
+app.get("/api/admin/usage", requireAuth, requireAdmin, wrap((_req, res) => res.json({ usage: Admin.usageStats() })));
 
 // ================= STATIC + SPA =================
 app.use(express.static(PUBLIC_DIR, {
