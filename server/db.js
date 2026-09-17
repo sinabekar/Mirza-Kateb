@@ -69,6 +69,8 @@ try { db.exec("ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1
 try { db.exec("ALTER TABLE users ADD COLUMN max_sessions INTEGER"); } catch {}
 try { db.exec("ALTER TABLE users ADD COLUMN max_storage_mb INTEGER"); } catch {}
 try { db.exec("ALTER TABLE users ADD COLUMN max_minutes INTEGER"); } catch {}
+try { db.exec("ALTER TABLE sessions ADD COLUMN input_tokens INTEGER DEFAULT 0"); } catch {}
+try { db.exec("ALTER TABLE sessions ADD COLUMN output_tokens INTEGER DEFAULT 0"); } catch {}
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
 
@@ -159,6 +161,7 @@ export const Sessions = {
     const map = {
       title: "title", duration: "duration", transcript: "transcript", prompt: "prompt",
       status: "status", audioFile: "audio_file", audioMime: "audio_mime",
+      inputTokens: "input_tokens", outputTokens: "output_tokens",
     };
     const sets = []; const vals = {};
     for (const [k, col] of Object.entries(map)) if (k in patch) { sets.push(`${col}=@${col}`); vals[col] = patch[k]; }
@@ -249,6 +252,26 @@ export const Admin = {
   },
   deleteUser(id) {
     return db.prepare("DELETE FROM users WHERE id=?").run(id).changes > 0;
+  },
+  usageStats() {
+    const rows = db.prepare(`
+      SELECT u.id, u.name, u.email,
+        COUNT(DISTINCT s.id)                      AS sessions,
+        COALESCE(SUM(s.duration), 0)              AS total_secs,
+        COALESCE(SUM(s.input_tokens), 0)          AS input_tokens,
+        COALESCE(SUM(s.output_tokens), 0)         AS output_tokens
+      FROM users u
+      LEFT JOIN sessions s ON s.user_id = u.id
+      GROUP BY u.id
+      ORDER BY input_tokens DESC
+    `).all();
+    return rows.map((r) => ({
+      id: r.id, name: r.name, email: r.email,
+      sessions: r.sessions,
+      totalMinutes: Math.round(r.total_secs / 60),
+      inputTokens: r.input_tokens,
+      outputTokens: r.output_tokens,
+    }));
   },
 };
 

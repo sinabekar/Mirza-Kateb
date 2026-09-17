@@ -17,6 +17,22 @@ export function adminView() {
     </div>
     <div class="stat-row mb" id="stats"><div class="spinner"></div></div>
 
+    <div class="card mb" id="usageCard">
+      <div class="row between mb">
+        <h3 style="margin:0">Token Usage</h3>
+        <span class="muted" style="font-size:.82rem">Accumulated per user across all sessions</span>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="ai-table" id="usageTable">
+          <thead><tr>
+            <th>User</th><th>Sessions</th><th>Audio (min)</th>
+            <th>Input tokens</th><th>Output tokens</th><th>Total tokens</th>
+          </tr></thead>
+          <tbody id="usageBody"><tr><td colspan="6" class="center muted" style="padding:1.5rem"><div class="spinner"></div></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
     <div class="card">
       <div class="row between wrap mb" style="gap:.8rem">
         <h3 style="margin:0">
@@ -130,6 +146,35 @@ export function adminView() {
   root.querySelector("#newUserBtn").onclick = () => openCreateModal(loadUsers);
 
   loadUsers();
+  loadUsage();
+
+  async function loadUsage() {
+    const tbody = root.querySelector("#usageBody");
+    try {
+      const { usage } = await store.api("/api/admin/usage");
+      if (!usage.length) { tbody.innerHTML = `<tr><td colspan="6" class="center muted" style="padding:1.5rem">No usage data yet.</td></tr>`; return; }
+      const fmt = (n) => n ? n.toLocaleString() : "—";
+      let totalSessions = 0, totalMinutes = 0, totalIn = 0, totalOut = 0;
+      tbody.innerHTML = usage.map((u) => {
+        totalSessions += u.sessions; totalMinutes += u.totalMinutes;
+        totalIn += u.inputTokens; totalOut += u.outputTokens;
+        return `<tr>
+          <td><strong>${esc(u.name)}</strong><div class="muted" style="font-size:.78rem">${esc(u.email)}</div></td>
+          <td>${u.sessions}</td>
+          <td>${u.totalMinutes}</td>
+          <td>${fmt(u.inputTokens)}</td>
+          <td>${fmt(u.outputTokens)}</td>
+          <td style="font-weight:500">${fmt(u.inputTokens + u.outputTokens)}</td>
+        </tr>`;
+      }).join("") + `<tr style="background:var(--surface);font-weight:600;border-top:2px solid var(--border)">
+        <td>Total</td><td>${totalSessions}</td><td>${totalMinutes}</td>
+        <td>${fmt(totalIn)}</td><td>${fmt(totalOut)}</td><td>${fmt(totalIn + totalOut)}</td>
+      </tr>`;
+    } catch (e) {
+      tbody.innerHTML = `<tr><td colspan="6" class="center"><div class="banner" style="display:inline-block">⚠ ${esc(e.message)}</div></td></tr>`;
+    }
+  }
+
   return root;
 }
 

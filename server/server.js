@@ -11,7 +11,7 @@ import multer from "multer";
 
 import db, { seedAdmin, Users, Workspaces, Sessions, Chats, Admin, UPLOAD_DIR } from "./db.js";
 import { attachUser, requireAuth, requireAdmin, issueCookie, clearCookie, isValidEmail } from "./auth.js";
-import { transcribeLong, runTask, extractActions, askMemory, cleanTranscript, aiConfigured, TASKS, inferTask } from "./ai.js";
+import { transcribeLong, runTask, extractActions, askMemory, normalizeTranscript, aiConfigured, TASKS, inferTask } from "./ai.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, "..", "public");
@@ -131,22 +131,28 @@ app.post("/api/sessions/:id/process", requireAuth, wrap(async (req, res) => {
   Sessions.update(req.user.id, raw.id, { status: "processing" });
 
   try {
-    const rawTranscript = (await transcribeLong(audioPath, raw.audio_mime, language) || "").trim();
+    const tokenAccum = [];
+    const rawTranscript = (await transcribeLong(audioPath, raw.audio_mime, language, tokenAccum) || "").trim();
     console.log(`[process] session ${raw.id}: transcript ${rawTranscript.length} chars (${raw.audio_mime})`);
     if (rawTranscript.length < 3) {
       throw new Error("No speech was detected. The recording may be silent or an unsupported format — make sure you spoke (and, for meetings, that 'Share tab audio' was on), or upload an MP3/WAV.");
     }
-    const transcript = await cleanTranscript(rawTranscript);
+    const transcript = normalizeTranscript(rawTranscript);
 
     const key = taskKey || inferTask(prompt);
     const label = TASKS.find((t) => t.key === key)?.label || "Convert to text";
-    const content = await runTask({ transcript, prompt, taskKey: key });
+    const content = await runTask({ transcript, prompt, taskKey: key, accum: tokenAccum });
     const output = { id: Sessions.uid(), type: label, created: Date.now(), versions: [{ id: Sessions.uid(), created: Date.now(), content }] };
-    const actionItems = wantActions ? await extractActions(transcript) : [];
+    const actionItems = wantActions ? await extractActions(transcript, tokenAccum) : [];
+
+    const totalIn  = tokenAccum.reduce((s, x) => s + (x.in  || 0), 0);
+    const totalOut = tokenAccum.reduce((s, x) => s + (x.out || 0), 0);
+    console.log(`[process] session ${raw.id}: tokens in=${totalIn} out=${totalOut}`);
 
     const session = Sessions.update(req.user.id, raw.id, {
       transcript, prompt: prompt || label, status: "ready",
       title: deriveTitle(content, raw.title), outputs: [output], actionItems,
+      inputTokens: totalIn, outputTokens: totalOut,
     });
     res.json({ session });
   } catch (e) {
@@ -264,6 +270,8 @@ app.delete("/api/admin/users/:id", requireAuth, requireAdmin, wrap((req, res) =>
   if (!ok) return res.status(404).json({ error: "User not found." });
   res.json({ ok: true });
 }));
+
+app.get("/api/admin/usage", requireAuth, requireAdmin, wrap((_req, res) => res.json({ usage: Admin.usageStats() })));
 
 // ================= STATIC + SPA =================
 app.use(express.static(PUBLIC_DIR, {
