@@ -9,7 +9,7 @@ import express from "express";
 import cookieParser from "cookie-parser";
 import multer from "multer";
 
-import db, { seedAdmin, Users, Workspaces, Sessions, Chats, Admin, UPLOAD_DIR } from "./db.js";
+import db, { seedAdmin, Users, Workspaces, Sessions, Chats, Admin, Shares, UPLOAD_DIR } from "./db.js";
 import { attachUser, requireAuth, requireAdmin, issueCookie, clearCookie, isValidEmail } from "./auth.js";
 import { transcribeLong, runTask, extractActions, askMemory, normalizeTranscript, aiConfigured, TASKS, inferTask } from "./ai.js";
 
@@ -273,11 +273,55 @@ app.delete("/api/admin/users/:id", requireAuth, requireAdmin, wrap((req, res) =>
 
 app.get("/api/admin/usage", requireAuth, requireAdmin, wrap((_req, res) => res.json({ usage: Admin.usageStats() })));
 
+// ================= SHARE =================
+app.post("/api/sessions/:id/share", requireAuth, wrap((req, res) => {
+  const raw = Sessions.rawById(req.user.id, req.params.id);
+  if (!raw) return res.status(404).json({ error: "Session not found." });
+  const { inclTx = true, inclOut = true, inclActs = true } = req.body || {};
+  const token = Shares.upsert(raw.id, req.user.id, { inclTx, inclOut, inclActs });
+  res.json({ token });
+}));
+
+app.delete("/api/sessions/:id/share", requireAuth, wrap((req, res) => {
+  const raw = Sessions.rawById(req.user.id, req.params.id);
+  if (!raw) return res.status(404).json({ error: "Session not found." });
+  Shares.revoke(raw.id, req.user.id);
+  res.json({ ok: true });
+}));
+
+app.get("/api/sessions/:id/share", requireAuth, wrap((req, res) => {
+  const raw = Sessions.rawById(req.user.id, req.params.id);
+  if (!raw) return res.status(404).json({ error: "Session not found." });
+  const share = Shares.forSession(raw.id);
+  res.json({ share: share ? { token: share.token, inclTx: !!share.incl_tx, inclOut: !!share.incl_out, inclActs: !!share.incl_acts } : null });
+}));
+
+// Public share endpoint — no auth required
+app.get("/api/share/:token", wrap((req, res) => {
+  const share = Shares.get(req.params.token);
+  if (!share) return res.status(404).json({ error: "Share link not found or has been revoked." });
+  const raw = db.prepare("SELECT * FROM sessions WHERE id=?").get(share.session_id);
+  if (!raw) return res.status(404).json({ error: "Session no longer exists." });
+  const owner = db.prepare("SELECT name FROM users WHERE id=?").get(raw.user_id);
+  const result = {
+    title: raw.title,
+    date: raw.created_at,
+    duration: raw.duration,
+    ownerName: owner?.name || "Unknown",
+  };
+  if (share.incl_tx) result.transcript = raw.transcript || "";
+  if (share.incl_out) result.outputs = JSON.parse(raw.outputs || "[]");
+  if (share.incl_acts) result.actionItems = JSON.parse(raw.action_items || "[]");
+  res.json(result);
+}));
+
 // ================= STATIC + SPA =================
 app.use(express.static(PUBLIC_DIR, {
   etag: true,
-  setHeaders: (res) => res.setHeader("Cache-Control", "no-cache"), // always revalidate → picks up updates
+  setHeaders: (res) => res.setHeader("Cache-Control", "no-cache"),
 }));
+// Public share page — must come before the SPA catchall
+app.get("/s/:token", (_req, res) => res.sendFile(path.join(PUBLIC_DIR, "share.html")));
 app.get("*", (req, res, next) => {
   if (req.path.startsWith("/api/")) return next();
   res.sendFile(path.join(PUBLIC_DIR, "index.html"));
