@@ -37,6 +37,7 @@ export function sessionView(id) {
         </div>
       </div>
       <div class="row wrap">
+        <button class="btn btn-sm" id="shareBtn">${icon("share")} Share</button>
         <button class="btn btn-ghost btn-danger btn-sm" id="delBtn">${icon("trash")} Delete</button>
       </div>
     </div>
@@ -68,6 +69,7 @@ export function sessionView(id) {
     confirmText: "Delete", danger: true, onConfirm: () => { store.removeSession(id); toast("Session deleted"); go(""); },
   });
   root.querySelector("#sTitle").onclick = () => renameTitle(id, root.querySelector("#sTitle"));
+  root.querySelector("#shareBtn").onclick = () => openShareModal(id);
 
   // ---- re-transcribe the saved audio (re-runs server transcription) ----
   const retxBtn = root.querySelector("#retranscribe");
@@ -277,6 +279,103 @@ async function regenerate(id, out, done) {
     toast("New version generated");
     done();
   } catch (e) { toast(e.message); }
+}
+
+async function openShareModal(id) {
+  const se = store.session(id);
+
+  // fetch existing share state
+  let existingShare = null;
+  try {
+    const res = await store.api(`/api/sessions/${id}/share`);
+    existingShare = res.share;
+  } catch {}
+
+  const inclTx   = existingShare ? existingShare.inclTx   : !!se.transcript;
+  const inclOut  = existingShare ? existingShare.inclOut  : se.outputs.length > 0;
+  const inclActs = existingShare ? existingShare.inclActs : se.actionItems.length > 0;
+
+  modal({
+    title: "Share this session",
+    body: `
+      <p class="muted" style="margin-top:-.4rem;margin-bottom:1rem">Choose what to include in the public link. Anyone with the link can view — no login required.</p>
+      <div class="field" style="margin-bottom:.6rem">
+        <label style="display:flex;align-items:center;gap:.6rem;cursor:pointer">
+          <input type="checkbox" id="sInclOut" ${inclOut && se.outputs.length ? "checked" : ""} ${se.outputs.length ? "" : "disabled"} />
+          Output / Summary ${se.outputs.length === 0 ? '<span class="muted">(not generated yet)</span>' : ""}
+        </label>
+      </div>
+      <div class="field" style="margin-bottom:.6rem">
+        <label style="display:flex;align-items:center;gap:.6rem;cursor:pointer">
+          <input type="checkbox" id="sInclActs" ${inclActs && se.actionItems.length ? "checked" : ""} ${se.actionItems.length ? "" : "disabled"} />
+          Action Items ${se.actionItems.length === 0 ? '<span class="muted">(none yet)</span>' : ""}
+        </label>
+      </div>
+      <div class="field" style="margin-bottom:1rem">
+        <label style="display:flex;align-items:center;gap:.6rem;cursor:pointer">
+          <input type="checkbox" id="sInclTx" ${inclTx && se.transcript ? "checked" : ""} ${se.transcript ? "" : "disabled"} />
+          Transcript ${!se.transcript ? '<span class="muted">(not available)</span>' : ""}
+        </label>
+      </div>
+      ${existingShare ? `<div id="sLinkBox" style="margin-top:.6rem">
+        <div class="eyebrow" style="color:var(--olive);margin-bottom:.4rem">Current link</div>
+        <div style="display:flex;gap:.5rem;align-items:center">
+          <input id="sLinkInput" type="text" readonly value="${location.origin}/s/${existingShare.token}" style="flex:1;font-size:.82rem" onclick="this.select()" />
+          <button class="btn btn-sm" id="sCopyBtn">Copy</button>
+        </div>
+        <button class="btn btn-ghost btn-danger btn-sm" id="sRevoke" style="margin-top:.6rem">Revoke link</button>
+      </div>` : ""}`,
+    confirmText: existingShare ? "Update link" : "Create link",
+    onConfirm: async (root) => {
+      const iOut   = root.querySelector("#sInclOut")?.checked  ?? false;
+      const iActs  = root.querySelector("#sInclActs")?.checked ?? false;
+      const iTx    = root.querySelector("#sInclTx")?.checked   ?? false;
+      if (!iOut && !iActs && !iTx) { toast("Select at least one section to share"); return true; }
+
+      const btn = root.querySelector("[data-ok]");
+      btn.textContent = "Creating…"; btn.disabled = true;
+      try {
+        const { token } = await store.api(`/api/sessions/${id}/share`, {
+          method: "POST", body: { inclTx: iTx, inclOut: iOut, inclActs: iActs },
+        });
+        const link = `${location.origin}/s/${token}`;
+        root.querySelector("#sLinkBox")?.remove();
+
+        // inject link box into modal body
+        const linkBox = document.createElement("div");
+        linkBox.style.marginTop = ".8rem";
+        linkBox.innerHTML = `
+          <div class="eyebrow" style="color:var(--olive);margin-bottom:.4rem">${existingShare ? "Updated link" : "Your share link"}</div>
+          <div style="display:flex;gap:.5rem;align-items:center">
+            <input type="text" readonly value="${link}" style="flex:1;font-size:.82rem" onclick="this.select()" />
+            <button class="btn btn-sm" id="newCopyBtn">Copy</button>
+          </div>`;
+        root.querySelector(".modal-body")?.appendChild(linkBox) || btn.parentElement.insertAdjacentElement("beforebegin", linkBox);
+        linkBox.querySelector("#newCopyBtn").onclick = () => {
+          navigator.clipboard.writeText(link).then(() => { linkBox.querySelector("#newCopyBtn").textContent = "Copied!"; });
+        };
+        btn.textContent = "Done"; btn.disabled = false;
+        toast(existingShare ? "Link updated" : "Link created");
+      } catch (e) { toast(e.message); btn.textContent = existingShare ? "Update link" : "Create link"; btn.disabled = false; }
+      return true;
+    },
+  });
+
+  // wire up existing copy/revoke buttons
+  setTimeout(() => {
+    document.querySelector("#sCopyBtn")?.addEventListener("click", () => {
+      navigator.clipboard.writeText(document.querySelector("#sLinkInput").value)
+        .then(() => { document.querySelector("#sCopyBtn").textContent = "Copied!"; });
+    });
+    document.querySelector("#sRevoke")?.addEventListener("click", async () => {
+      if (!confirm("Revoke this link? Anyone with it won't be able to access the session anymore.")) return;
+      try {
+        await store.api(`/api/sessions/${id}/share`, { method: "DELETE" });
+        toast("Link revoked");
+        document.querySelector(".modal-backdrop")?.remove();
+      } catch (e) { toast(e.message); }
+    });
+  }, 50);
 }
 
 function generateModal(id, done) {

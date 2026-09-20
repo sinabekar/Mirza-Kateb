@@ -56,6 +56,16 @@ CREATE TABLE IF NOT EXISTS sessions (
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_ws   ON sessions(workspace_id);
 
+CREATE TABLE IF NOT EXISTS shares (
+  token       TEXT PRIMARY KEY,
+  session_id  TEXT NOT NULL UNIQUE,
+  user_id     TEXT NOT NULL,
+  incl_tx     INTEGER NOT NULL DEFAULT 1,
+  incl_out    INTEGER NOT NULL DEFAULT 1,
+  incl_acts   INTEGER NOT NULL DEFAULT 1,
+  created_at  INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS chats (
   user_id      TEXT NOT NULL,
   workspace_id TEXT NOT NULL,
@@ -273,6 +283,24 @@ export const Admin = {
       outputTokens: r.output_tokens,
     }));
   },
+};
+
+// ---- Shares ----
+const shareToken = () => Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+
+export const Shares = {
+  upsert(sessionId, userId, { inclTx = true, inclOut = true, inclActs = true }) {
+    const existing = db.prepare("SELECT token FROM shares WHERE session_id=?").get(sessionId);
+    const token = existing?.token || shareToken();
+    db.prepare(`INSERT INTO shares (token,session_id,user_id,incl_tx,incl_out,incl_acts,created_at)
+      VALUES (?,?,?,?,?,?,?)
+      ON CONFLICT(session_id) DO UPDATE SET incl_tx=excluded.incl_tx, incl_out=excluded.incl_out, incl_acts=excluded.incl_acts`)
+      .run(token, sessionId, userId, inclTx ? 1 : 0, inclOut ? 1 : 0, inclActs ? 1 : 0, Date.now());
+    return token;
+  },
+  forSession: (sessionId) => db.prepare("SELECT * FROM shares WHERE session_id=?").get(sessionId),
+  get: (token) => db.prepare("SELECT * FROM shares WHERE token=?").get(token),
+  revoke: (sessionId, userId) => db.prepare("DELETE FROM shares WHERE session_id=? AND user_id=?").run(sessionId, userId).changes > 0,
 };
 
 export default db;
